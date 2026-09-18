@@ -78,6 +78,29 @@ Every formal asset should correspond to the same Git tag and include a SHA-256 c
 
 </details>
 
+## Forgotten administrator password
+
+For a normal single-administrator installation, run:
+
+```bash
+sudo msf reset-password
+```
+
+The command then prompts for the new password twice without echo. The new password is **not placed after the command**, is never cleared, and is not printed after success:
+
+```text
+New password:
+Confirm password:
+```
+
+If multiple administrators exist, use the explicit username option:
+
+```bash
+sudo msf reset-password --user admin
+```
+
+Only the selected administrator is changed, and that account's existing login sessions are invalidated. See the [complete CLI guide](docs/cli.en.md) for platform-specific entry points.
+
 ## Architecture
 
 <p align="center">
@@ -90,6 +113,7 @@ The default chain combines MosDNS `:53`, Mihomo DNS `:6666`, Fake-IP, and either
 
 | Category | Documentation |
 |---|---|
+| Command line | [Complete CLI guide](docs/cli.en.md) |
 | Router integration | [Overview](docs/guide/en/router-integration.md)<br>[RouterOS](docs/guide/en/routeros.md)<br>[iKuai](docs/guide/en/ikuai.md)<br>[OpenWrt](docs/guide/en/openwrt.md)<br>[UniFi](docs/guide/en/unifi.md) |
 | Runtime reference | [Directories, ports, and file layout](docs/reference/runtime.md) |
 | Docker | [Deployment guide](docs/docker.en.md) |

@@ -13,7 +13,183 @@ import (
 	"time"
 
 	"github.com/scoltzero/msf/internal/cloudflareredirect"
+	"github.com/scoltzero/msf/internal/server"
 )
+
+func TestHelpIsBilingualAndShowsSimpleLifecycle(t *testing.T) {
+	var output bytes.Buffer
+	printUsageTo(&output)
+	text := output.String()
+	for _, want := range []string{
+		"MSF 命令行 / Command Line",
+		"msf start",
+		"启动 MSF / Start MSF",
+		"msf reset-password [--user 用户名]",
+		"sudo msf reset-password",
+		"新密码不写在命令后面",
+		"msf serve",
+		"数据库迁移会在 MSF 启动时自动执行",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("help output missing %q:\n%s", want, text)
+		}
+	}
+	if strings.Contains(text, "reset-password [--config") {
+		t.Fatalf("normal password recovery help should not require a data path:\n%s", text)
+	}
+}
+
+func TestResetPasswordCommandDiscoversInstallAndTargetsAdministrator(t *testing.T) {
+	dataDir := t.TempDir()
+	app, err := server.New(serverOptions(dataDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	if _, err := app.DB.Exec(`insert into users(username,password,role,is_active,created_at,updated_at) values('alice','old','admin',true,?,?)`, now, now); err != nil {
+		app.Close()
+		t.Fatal(err)
+	}
+	if _, err := app.DB.Exec(`insert into refresh_tokens(user_id,token_hash,expires_at,created_at) select id,'refresh',?,? from users where username='alice'`, now.Add(time.Hour), now); err != nil {
+		app.Close()
+		t.Fatal(err)
+	}
+	app.Close()
+
+	oldOut, oldRead := passwordResetStdout, passwordResetReadSecret
+	var output bytes.Buffer
+	passwordResetStdout = &output
+	answers := []string{"new-password-123", "new-password-123"}
+	passwordResetReadSecret = func(string) (string, error) {
+		answer := answers[0]
+		answers = answers[1:]
+		return answer, nil
+	}
+	t.Cleanup(func() {
+		passwordResetStdout = oldOut
+		passwordResetReadSecret = oldRead
+	})
+	t.Setenv("MSF_DATA_DIR", dataDir)
+	if err := run([]string{"reset-password"}); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(output.String(), "new-password-123") {
+		t.Fatal("reset command output exposed the new password")
+	}
+	if !strings.Contains(output.String(), "alice") {
+		t.Fatalf("reset output should identify the administrator: %s", output.String())
+	}
+
+	check, err := server.New(serverOptions(dataDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer check.Close()
+	var authVersion int
+	var refreshRevoked bool
+	if err := check.DB.QueryRow(`select auth_version from users where username='alice'`).Scan(&authVersion); err != nil {
+		t.Fatal(err)
+	}
+	if err := check.DB.QueryRow(`select revoked from refresh_tokens where token_hash='refresh'`).Scan(&refreshRevoked); err != nil {
+		t.Fatal(err)
+	}
+	if authVersion != 1 || !refreshRevoked {
+		t.Fatalf("password reset did not invalidate sessions: auth_version=%d refresh_revoked=%t", authVersion, refreshRevoked)
+	}
+}
+
+func TestDiscoverInstalledDataDirFromSystemdService(t *testing.T) {
+	oldSystemdDir := systemdServiceDir
+	systemdServiceDir = t.TempDir()
+	t.Cleanup(func() { systemdServiceDir = oldSystemdDir })
+	dataDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dataDir, "database"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, "database", "msf.db"), nil, 0644); err != nil {
+		t.Fatal(err)
+	}
+	service := "[Service]\nEnvironment=MSF_DATA_DIR=" + dataDir + "\n"
+	if err := os.WriteFile(filepath.Join(systemdServiceDir, "msf.service"), []byte(service), 0644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := discoverInstalledDataDir("msf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != dataDir {
+		t.Fatalf("discovered data dir=%q, want %q", got, dataDir)
+	}
+}
+
+func TestResetPasswordCommandRequiresUsernameForMultipleAdministrators(t *testing.T) {
+	dataDir := t.TempDir()
+	app, err := server.New(serverOptions(dataDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	for _, username := range []string{"alice", "bob"} {
+		if _, err := app.DB.Exec(`insert into users(username,password,role,is_active,created_at,updated_at) values(?,?,'admin',true,?,?)`, username, "old", now, now); err != nil {
+			app.Close()
+			t.Fatal(err)
+		}
+	}
+	app.Close()
+	if err := resetAdminPasswordCLI(dataDir, "", nil); err == nil || !strings.Contains(err.Error(), "multiple administrators") {
+		t.Fatalf("expected a targeted-admin error, got %v", err)
+	}
+	if err := resetAdminPasswordCLI(dataDir, "missing", nil); err == nil || !strings.Contains(err.Error(), "was not found") {
+		t.Fatalf("expected an unknown administrator error before prompting, got %v", err)
+	}
+	if err := resetAdminPasswordCLI(dataDir, "", []string{"alice"}); err == nil || !strings.Contains(err.Error(), "--user") {
+		t.Fatalf("positional username should be rejected with explicit guidance, got %v", err)
+	}
+	oldOut, oldRead := passwordResetStdout, passwordResetReadSecret
+	passwordResetStdout = io.Discard
+	answers := []string{"alice-new-password", "alice-new-password"}
+	passwordResetReadSecret = func(string) (string, error) {
+		answer := answers[0]
+		answers = answers[1:]
+		return answer, nil
+	}
+	t.Cleanup(func() {
+		passwordResetStdout = oldOut
+		passwordResetReadSecret = oldRead
+	})
+	t.Setenv("MSF_DATA_DIR", dataDir)
+	if err := run([]string{"reset-password", "--user", "alice"}); err != nil {
+		t.Fatalf("explicit --user reset failed: %v", err)
+	}
+}
+
+func TestStartRuntimeIsIdempotentWhenProcessIsRunning(t *testing.T) {
+	if _, err := exec.LookPath("sleep"); err != nil {
+		t.Skip("sleep command not available")
+	}
+	dataDir := t.TempDir()
+	cmd := exec.Command("sleep", "30")
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+	t.Cleanup(func() {
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+		}
+		select {
+		case <-done:
+		case <-time.After(2 * time.Second):
+		}
+	})
+	if err := os.WriteFile(filepath.Join(dataDir, "msf.pid"), []byte(strconv.Itoa(cmd.Process.Pid)), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := startRuntime(dataDir, "127.0.0.1", 7777, "missing-test-service"); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestMenuBarTokenCommandRequiresRootAndEmitsCredential(t *testing.T) {
 	oldEUID, oldOut := currentEUID, menuBarTokenStdout

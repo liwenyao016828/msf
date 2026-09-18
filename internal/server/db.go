@@ -21,6 +21,7 @@ type User struct {
 	LastLogin   *time.Time `json:"last_login,omitempty"`
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
+	AuthVersion int64      `json:"-"`
 }
 
 func (a *App) migrate() error {
@@ -38,6 +39,7 @@ func (a *App) migrate() error {
 			last_login datetime,
 			failed_attempts integer default 0,
 			locked_until datetime,
+			auth_version integer not null default 0,
 			created_at datetime,
 			updated_at datetime,
 			deleted_at datetime
@@ -46,6 +48,7 @@ func (a *App) migrate() error {
 			id integer primary key autoincrement,
 			user_id integer not null,
 			token_hash text not null,
+			auth_version integer not null default 0,
 			expires_at datetime,
 			revoked numeric default false,
 			created_at datetime
@@ -302,6 +305,12 @@ func (a *App) migrate() error {
 			return fmt.Errorf("migrate %q: %w", stmt, err)
 		}
 	}
+	if err := a.ensureUserAuthVersionColumn(); err != nil {
+		return err
+	}
+	if err := a.ensureRefreshTokenAuthVersionColumn(); err != nil {
+		return err
+	}
 	if err := a.ensureAPITokenScopeColumn(); err != nil {
 		return err
 	}
@@ -327,6 +336,18 @@ func (a *App) migrate() error {
 		return err
 	}
 	return nil
+}
+
+func (a *App) ensureUserAuthVersionColumn() error {
+	return a.ensureTableColumns("users", map[string]string{
+		"auth_version": "integer not null default 0",
+	})
+}
+
+func (a *App) ensureRefreshTokenAuthVersionColumn() error {
+	return a.ensureTableColumns("refresh_tokens", map[string]string{
+		"auth_version": "integer not null default 0",
+	})
 }
 
 func (a *App) ensureAssistantRuntimeColumns() error {
@@ -469,20 +490,87 @@ func (a *App) IsInitialized() bool {
 	return err == nil && ok
 }
 
-func (a *App) ResetAdminPassword(password string) error {
+func validateNewPassword(password string) error {
+	if utf8.RuneCountInString(password) < 8 {
+		return errors.New("password must be at least 8 characters")
+	}
+	if strings.TrimSpace(password) == "" {
+		return errors.New("password cannot be blank")
+	}
+	return nil
+}
+
+func (a *App) AdminUsers() ([]User, error) {
+	rows, err := a.DB.Query(`select id,username,coalesce(email,''),coalesce(display_name,''),role,is_active,last_login,created_at,updated_at,coalesce(auth_version,0)
+		from users where role='admin' and deleted_at is null order by username`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var users []User
+	for rows.Next() {
+		var u User
+		var last sql.NullTime
+		if err := rows.Scan(&u.ID, &u.Username, &u.Email, &u.DisplayName, &u.Role, &u.IsActive, &last, &u.CreatedAt, &u.UpdatedAt, &u.AuthVersion); err != nil {
+			return nil, err
+		}
+		if last.Valid {
+			u.LastLogin = &last.Time
+		}
+		users = append(users, u)
+	}
+	return users, rows.Err()
+}
+
+func (a *App) ResetAdminPassword(username, password string) error {
+	username = strings.TrimSpace(username)
+	if username == "" {
+		return errors.New("administrator username is required")
+	}
+	u, _, err := a.findUserByUsername(username)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("administrator %q was not found", username)
+		}
+		return err
+	}
+	if u.Role != "admin" {
+		return fmt.Errorf("user %q is not an administrator", username)
+	}
+	return a.ResetUserPassword(u.ID, password)
+}
+
+// ResetUserPassword updates one user's password and invalidates every login
+// session issued before the reset. API tokens are separate credentials and are
+// intentionally left unchanged.
+func (a *App) ResetUserPassword(userID int64, password string) error {
+	if err := validateNewPassword(password); err != nil {
+		return err
+	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(normalizePasswordForStorage(password)), bcrypt.DefaultCost)
 	if err != nil {
 		return err
 	}
-	res, err := a.DB.Exec(`update users set password=?, updated_at=? where role='admin' and deleted_at is null`, string(hash), time.Now())
+	tx, err := a.DB.Begin()
 	if err != nil {
 		return err
 	}
-	n, _ := res.RowsAffected()
-	if n == 0 {
-		_, err = a.DB.Exec(`insert into users(username,password,role,is_active,created_at,updated_at) values('admin',?,'admin',true,?,?)`, string(hash), time.Now(), time.Now())
+	defer tx.Rollback()
+	res, err := tx.Exec(`update users set password=?,auth_version=coalesce(auth_version,0)+1,failed_attempts=0,locked_until=null,updated_at=? where id=? and deleted_at is null`, string(hash), time.Now(), userID)
+	if err != nil {
+		return err
 	}
-	return err
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	if _, err := tx.Exec(`update refresh_tokens set revoked=true where user_id=? and revoked=false`, userID); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (a *App) createOrUpdateAdmin(username, password, email string) error {
@@ -502,12 +590,12 @@ func (a *App) createOrUpdateAdmin(username, password, email string) error {
 }
 
 func (a *App) findUserByUsername(username string) (*User, string, error) {
-	row := a.DB.QueryRow(`select id, username, password, coalesce(email,''), coalesce(display_name,''), role, is_active, last_login, created_at, updated_at
+	row := a.DB.QueryRow(`select id, username, password, coalesce(email,''), coalesce(display_name,''), role, is_active, last_login, created_at, updated_at, coalesce(auth_version,0)
 		from users where username=? and deleted_at is null`, username)
 	var u User
 	var password string
 	var last sql.NullTime
-	if err := row.Scan(&u.ID, &u.Username, &password, &u.Email, &u.DisplayName, &u.Role, &u.IsActive, &last, &u.CreatedAt, &u.UpdatedAt); err != nil {
+	if err := row.Scan(&u.ID, &u.Username, &password, &u.Email, &u.DisplayName, &u.Role, &u.IsActive, &last, &u.CreatedAt, &u.UpdatedAt, &u.AuthVersion); err != nil {
 		return nil, "", err
 	}
 	if last.Valid {
@@ -517,11 +605,11 @@ func (a *App) findUserByUsername(username string) (*User, string, error) {
 }
 
 func (a *App) userByID(id int64) (*User, error) {
-	row := a.DB.QueryRow(`select id, username, coalesce(email,''), coalesce(display_name,''), role, is_active, last_login, created_at, updated_at
+	row := a.DB.QueryRow(`select id, username, coalesce(email,''), coalesce(display_name,''), role, is_active, last_login, created_at, updated_at, coalesce(auth_version,0)
 		from users where id=? and deleted_at is null`, id)
 	var u User
 	var last sql.NullTime
-	if err := row.Scan(&u.ID, &u.Username, &u.Email, &u.DisplayName, &u.Role, &u.IsActive, &last, &u.CreatedAt, &u.UpdatedAt); err != nil {
+	if err := row.Scan(&u.ID, &u.Username, &u.Email, &u.DisplayName, &u.Role, &u.IsActive, &last, &u.CreatedAt, &u.UpdatedAt, &u.AuthVersion); err != nil {
 		return nil, err
 	}
 	if last.Valid {

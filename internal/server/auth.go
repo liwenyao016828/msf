@@ -25,9 +25,10 @@ type AuthIdentity struct {
 }
 
 type Claims struct {
-	UserID   int64  `json:"user_id"`
-	Username string `json:"username"`
-	Role     string `json:"role"`
+	UserID      int64  `json:"user_id"`
+	Username    string `json:"username"`
+	Role        string `json:"role"`
+	AuthVersion int64  `json:"auth_version"`
 	jwt.RegisteredClaims
 }
 
@@ -83,6 +84,9 @@ func (a *App) authenticateJWT(tokenStr string) (*AuthIdentity, error) {
 	if err != nil {
 		return nil, err
 	}
+	if claims.AuthVersion != u.AuthVersion {
+		return nil, errors.New("session has been invalidated")
+	}
 	return &AuthIdentity{User: u, AuthType: "jwt", TokenScope: "admin"}, nil
 }
 
@@ -106,9 +110,10 @@ func (a *App) authenticateAPIToken(token string) (*AuthIdentity, error) {
 func (a *App) makeToken(u *User, ttl time.Duration) (string, error) {
 	now := time.Now()
 	claims := Claims{
-		UserID:   u.ID,
-		Username: u.Username,
-		Role:     u.Role,
+		UserID:      u.ID,
+		Username:    u.Username,
+		Role:        u.Role,
+		AuthVersion: u.AuthVersion,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   u.Username,
 			IssuedAt:  jwt.NewNumericDate(now),
@@ -147,7 +152,7 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	refresh := randomHex(32)
-	_, _ = a.DB.Exec(`insert into refresh_tokens(user_id,token_hash,expires_at,created_at) values(?,?,?,?)`, u.ID, tokenHash(refresh), time.Now().Add(30*24*time.Hour), time.Now())
+	_, _ = a.DB.Exec(`insert into refresh_tokens(user_id,token_hash,auth_version,expires_at,created_at) values(?,?,?,?,?)`, u.ID, tokenHash(refresh), u.AuthVersion, time.Now().Add(30*24*time.Hour), time.Now())
 	_, _ = a.DB.Exec(`update users set last_login=?, failed_attempts=0 where id=?`, time.Now(), u.ID)
 	a.audit(u, "login", "auth", "", true, "")
 	writeJSON(w, http.StatusOK, map[string]any{"token": token, "refresh_token": refresh, "user": u, "success": true})
@@ -182,8 +187,8 @@ func (a *App) handleRefresh(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	var userID int64
-	err := a.DB.QueryRow(`select user_id from refresh_tokens where token_hash=? and revoked=false and expires_at > ?`, tokenHash(refresh), time.Now()).Scan(&userID)
+	var userID, refreshAuthVersion int64
+	err := a.DB.QueryRow(`select user_id,coalesce(auth_version,0) from refresh_tokens where token_hash=? and revoked=false and expires_at > ?`, tokenHash(refresh), time.Now()).Scan(&userID, &refreshAuthVersion)
 	if err != nil {
 		writeError(w, http.StatusUnauthorized, "unauthorized", "refresh token invalid")
 		return
@@ -191,6 +196,10 @@ func (a *App) handleRefresh(w http.ResponseWriter, r *http.Request) {
 	u, err := a.userByID(userID)
 	if err != nil {
 		writeError(w, http.StatusUnauthorized, "unauthorized", "user not found")
+		return
+	}
+	if refreshAuthVersion != u.AuthVersion {
+		writeError(w, http.StatusUnauthorized, "unauthorized", "refresh token invalid")
 		return
 	}
 	token, err := a.makeToken(u, 24*time.Hour)
@@ -256,10 +265,8 @@ func (a *App) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_password", "旧密码错误")
 		return
 	}
-	newHash, _ := bcrypt.GenerateFromPassword([]byte(normalizePasswordForStorage(req.NewPassword)), bcrypt.DefaultCost)
-	_, err = a.DB.Exec(`update users set password=?, updated_at=? where id=?`, string(newHash), time.Now(), u.ID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "update_failed", err.Error())
+	if err := a.ResetUserPassword(u.ID, req.NewPassword); err != nil {
+		writeError(w, http.StatusBadRequest, "update_failed", err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"success": true})

@@ -29,6 +29,7 @@ import (
 
 	"github.com/scoltzero/msf/internal/cloudflareredirect"
 	"github.com/scoltzero/msf/internal/server"
+	"golang.org/x/term"
 )
 
 var (
@@ -47,6 +48,8 @@ var (
 	uninstallStdin           io.Reader = os.Stdin
 	uninstallStdout          io.Writer = os.Stdout
 	menuBarTokenStdout       io.Writer = os.Stdout
+	passwordResetStdout      io.Writer = os.Stdout
+	passwordResetReadSecret            = readPasswordFromTerminal
 	uninstallInputIsTerminal           = defaultInputIsTerminal
 	procRoot                           = "/proc"
 )
@@ -91,6 +94,7 @@ func run(args []string) error {
 	fs.BoolVar(versionFlag, "version", false, "print version")
 	versionJSON := fs.Bool("json", false, "print machine-readable JSON for the version command")
 	helpAll := fs.Bool("help-all", false, "print full help")
+	resetUsername := fs.String("user", "", "administrator username for password reset")
 	_ = fs.Parse(args)
 	configExplicit := false
 	hostExplicit := false
@@ -143,36 +147,33 @@ func run(args []string) error {
 		defer app.Close()
 		return app.EnsureBaseLayout()
 	case "reset-password":
-		app, err := server.New(serverOptions(*configDir))
-		if err != nil {
-			return err
+		dataDir := *configDir
+		if !configExplicit {
+			var err error
+			dataDir, err = discoverInstalledDataDir(*serviceName)
+			if err != nil {
+				return err
+			}
 		}
-		defer app.Close()
-		password := "admin123456"
-		if fs.NArg() > 0 {
-			password = fs.Arg(0)
-		}
-		if err := app.ResetAdminPassword(password); err != nil {
-			return err
-		}
-		fmt.Printf("admin password reset to: %s\n", password)
-		return nil
+		return resetAdminPasswordCLI(dataDir, *resetUsername, fs.Args())
 	case "menu-bar-token":
-		return issueMenuBarToken(*configDir)
+		return issueMenuBarToken(resolveInstalledDataDirOrDefault(*configDir, configExplicit, *serviceName))
+	case "start":
+		return startRuntime(resolveInstalledDataDirOrDefault(*configDir, configExplicit, *serviceName), *host, *port, *serviceName)
 	case "status":
-		return printStatus(*configDir, *serviceName)
+		return printStatus(resolveInstalledDataDirOrDefault(*configDir, configExplicit, *serviceName), *serviceName)
 	case "stop":
-		return stopRuntime(*configDir, *wait, *timeout, *force)
+		return stopRuntime(resolveInstalledDataDirOrDefault(*configDir, configExplicit, *serviceName), *wait, *timeout, *force)
 	case "restart":
-		return restartRuntime(*configDir, *host, *port, *serviceName, *timeout, *force)
+		return restartRuntime(resolveInstalledDataDirOrDefault(*configDir, configExplicit, *serviceName), *host, *port, *serviceName, *timeout, *force)
 	case "logs":
 		service := "msf"
 		if fs.NArg() > 0 {
 			service = fs.Arg(0)
 		}
-		return printLogs(*configDir, *serviceName, service, *lines)
+		return printLogs(resolveInstalledDataDirOrDefault(*configDir, configExplicit, *serviceName), *serviceName, service, *lines)
 	case "doctor":
-		return runDoctor(*configDir, *serviceName)
+		return runDoctor(resolveInstalledDataDirOrDefault(*configDir, configExplicit, *serviceName), *serviceName)
 	case "update":
 		return updateRuntime(updateOptions{Repo: *repo, URL: *updateURL, Prefix: *prefix, DataDir: *configDir, DataDirExplicit: configExplicit, Host: *host, HostExplicit: hostExplicit, Port: *port, PortExplicit: portExplicit, ServiceName: *serviceName})
 	case "service":
@@ -204,31 +205,128 @@ func run(args []string) error {
 }
 
 func printUsage() {
-	fmt.Print(`Usage:
-  msf serve [--config /opt/msf] [--host 0.0.0.0] [--port 7777]
-  msf init [--config /opt/msf]
-  msf status [--config /opt/msf]
-  msf restart [--config /opt/msf]
-  msf stop [--config /opt/msf] [--timeout 15s] [--force]
-  msf logs [--lines 100] [msf|mosdns|mihomo]
-  msf doctor [--config /opt/msf]
-  msf cloudflare-redirect start|stop|scan|apply|status [--config PATH]
-  msf update [--repo scoltzero/msf] [--url https://.../msf-linux-amd64.tar.gz]
-  msf uninstall [--config /opt/msf] [--prefix /usr/local] [--service-name msf] [--purge --yes|--keep-data]
-  msf migrate [--config /opt/msf]
-  msf reset-password [--config /opt/msf] [password]
-  msf menu-bar-token [--config /Library/Application Support/MSF]
-  msf service install|uninstall [--config /opt/msf]
-  msf license status|fingerprint
-  msf version
+	printUsageTo(os.Stdout)
+}
 
-Notes:
-  stop sends SIGTERM to the running msf process and waits for MosDNS/Mihomo child services to exit.
-  update is for Linux tarball/systemd installs. Docker, Unraid, and fnOS FPK installs must be updated from their platform manager.
-  update reuses the data directory from --config or the installed systemd service to avoid resetting setup state.
-  uninstall is for Linux tarball/systemd installs. Docker, Unraid, and fnOS FPK installs must be removed from their platform manager.
-  uninstall asks whether to remove the data directory on interactive terminals. In automation, pass --purge --yes to remove it or --keep-data to retain it.
+func printUsageTo(w io.Writer) {
+	fmt.Fprint(w, `MSF 命令行 / Command Line
+
+常用命令 / Common commands:
+  msf start                     启动 MSF / Start MSF
+  msf status                    查看运行状态 / Show runtime status
+  msf stop                      停止 MSF 及其托管组件 / Stop MSF and managed components
+  msf restart                   重启 MSF / Restart MSF
+  msf logs [msf|mosdns|mihomo]  查看日志 / Show logs
+  msf doctor                    检查安装和运行环境 / Check installation and runtime
+  msf reset-password [--user 用户名]  安全重置管理员密码 / Securely reset an administrator password
+  msf update                    更新 Linux 安装 / Update a Linux installation
+  msf uninstall                 卸载 Linux 安装 / Remove a Linux installation
+  msf version                   显示版本 / Show version
+  msf help                      显示本指南 / Show this guide
+
+密码恢复 / Password recovery:
+  通常只需运行 sudo msf reset-password。新密码不写在命令后面，而是在随后出现的隐藏提示中输入两次。
+  Usually run sudo msf reset-password. Do not put the password on the command line; enter it twice at the hidden prompts.
+  如果有多个管理员：sudo msf reset-password --user <用户名>
+  With multiple administrators: sudo msf reset-password --user <username>
+
+高级命令 / Advanced commands:
+  msf serve                     前台运行服务，供 systemd、容器和调试使用 / Run in foreground
+  msf init                      初始化数据目录 / Initialize the data layout
+  msf migrate                   执行数据库迁移并检查数据目录 / Run database migrations and check the data layout
+  msf service install|uninstall|status
+  msf cloudflare-redirect start|stop|scan|apply|status
+  msf menu-bar-token            配对 macOS 菜单栏 / Pair the macOS menu bar
+  msf license status|fingerprint
+
+说明 / Notes:
+  start 是普通用户的启动命令；serve 不会转入后台，主要由服务管理器调用。
+  start is the user-facing command; serve stays in the foreground for service managers.
+  数据库迁移会在 MSF 启动时自动执行，通常无需手工运行 migrate。
+  Database migrations run automatically at startup; migrate is normally unnecessary.
+  update、uninstall 和 service 仅适用于 Linux tarball/systemd；其他平台请使用各自的管理器。
+  update, uninstall, and service target Linux tarball/systemd installs; use the platform manager elsewhere.
+
+完整指南 / Full guide:
+  https://github.com/scoltzero/msf/blob/main/docs/cli.md (中文)
+  https://github.com/scoltzero/msf/blob/main/docs/cli.en.md (English)
 `)
+}
+
+func readPasswordFromTerminal(prompt string) (string, error) {
+	fd := int(os.Stdin.Fd())
+	if !term.IsTerminal(fd) {
+		return "", errors.New("password input requires an interactive terminal")
+	}
+	if _, err := fmt.Fprint(passwordResetStdout, prompt); err != nil {
+		return "", err
+	}
+	b, err := term.ReadPassword(fd)
+	_, _ = fmt.Fprintln(passwordResetStdout)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
+func resetAdminPasswordCLI(dataDir, username string, args []string) error {
+	if len(args) != 0 {
+		return errors.New("usage: msf reset-password [--user administrator-username]; the new password is entered at the hidden prompts")
+	}
+	app, err := server.New(serverOptions(dataDir))
+	if err != nil {
+		return err
+	}
+	defer app.Close()
+	admins, err := app.AdminUsers()
+	if err != nil {
+		return err
+	}
+	if len(admins) == 0 {
+		return errors.New("no administrator account exists; complete the setup wizard first")
+	}
+	username = strings.TrimSpace(username)
+	if username == "" {
+		if len(admins) != 1 {
+			names := make([]string, 0, len(admins))
+			for _, admin := range admins {
+				names = append(names, admin.Username)
+			}
+			return fmt.Errorf("multiple administrators found (%s); run: msf reset-password --user <username>", strings.Join(names, ", "))
+		}
+		username = admins[0].Username
+	}
+	var selected *server.User
+	for i := range admins {
+		if admins[i].Username == username {
+			selected = &admins[i]
+			break
+		}
+	}
+	if selected == nil {
+		return fmt.Errorf("administrator %q was not found", username)
+	}
+	password, err := passwordResetReadSecret("新密码 / New password: ")
+	if err != nil {
+		return err
+	}
+	confirm, err := passwordResetReadSecret("再次输入 / Confirm password: ")
+	if err != nil {
+		return err
+	}
+	if password != confirm {
+		return errors.New("passwords do not match")
+	}
+	if err := app.ResetAdminPassword(username, password); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(passwordResetStdout, "管理员 %s 的密码已重置，现有登录会话已失效。\nPassword reset for administrator %s; existing login sessions are now invalid.\n", username, username); err != nil {
+		return err
+	}
+	if !selected.IsActive {
+		_, err = fmt.Fprintln(passwordResetStdout, "注意：该账号仍处于禁用状态。 / Note: this account is still disabled.")
+	}
+	return err
 }
 
 func issueMenuBarToken(dataDir string) error {
@@ -416,12 +514,44 @@ Notes:
 }
 
 func defaultCloudflareRedirectDataDir() string {
-	if v := os.Getenv("MSF_DATA_DIR"); strings.TrimSpace(v) != "" {
-		return v
+	candidates := installedDataDirCandidates("msf")
+	for _, candidate := range candidates {
+		if looksLikeMSFDataDir(candidate) {
+			return candidate
+		}
+	}
+	return defaultDataDir()
+}
+
+func discoverInstalledDataDir(serviceName string) (string, error) {
+	for _, candidate := range installedDataDirCandidates(serviceName) {
+		if fileExists(filepath.Join(candidate, "database", "msf.db")) {
+			return candidate, nil
+		}
+	}
+	return "", errors.New("MSF installation database was not found; make sure MSF is installed on this machine")
+}
+
+func resolveInstalledDataDirOrDefault(configDir string, configExplicit bool, serviceName string) string {
+	if configExplicit {
+		return configDir
+	}
+	if discovered, err := discoverInstalledDataDir(serviceName); err == nil {
+		return discovered
+	}
+	return configDir
+}
+
+func installedDataDirCandidates(serviceName string) []string {
+	if serviceName == "" {
+		serviceName = "msf"
 	}
 	candidates := []string{
+		os.Getenv("MSF_DATA_DIR"),
 		dataDirFromUnraidConfig(),
-		dataDirFromSystemdService("msf"),
+		dataDirFromSystemdService(serviceName),
+		"/Library/Application Support/MSF",
+		"/var/apps/msf/var",
 		"/mnt/user/appdata/msf",
 		"/opt/msf",
 		"/.msf",
@@ -438,6 +568,7 @@ func defaultCloudflareRedirectDataDir() string {
 	}
 	candidates = append(candidates, defaultDataDir())
 	seen := map[string]bool{}
+	unique := make([]string, 0, len(candidates))
 	for _, candidate := range candidates {
 		candidate = strings.TrimSpace(candidate)
 		if candidate == "" {
@@ -448,11 +579,9 @@ func defaultCloudflareRedirectDataDir() string {
 			continue
 		}
 		seen[clean] = true
-		if looksLikeMSFDataDir(clean) {
-			return clean
-		}
+		unique = append(unique, clean)
 	}
-	return defaultDataDir()
+	return unique
 }
 
 func looksLikeMSFDataDir(path string) bool {
@@ -640,6 +769,25 @@ func printStatus(dataDir, serviceName string) error {
 		return errors.New("msf is not running")
 	}
 	return nil
+}
+
+func startRuntime(dataDir, host string, port int, serviceName string) error {
+	if systemdUnitExists(serviceName) {
+		cmd := exec.Command("systemctl", "start", serviceName)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			return err
+		}
+		fmt.Printf("started %s via systemd\n", serviceName)
+		return nil
+	}
+	if pid := runtimePID(dataDir); pid > 0 && processAlive(pid) {
+		fmt.Printf("msf is already running pid=%d\n", pid)
+		return nil
+	}
+	removeRuntimePIDFiles(dataDir)
+	return startDetached(dataDir, host, port)
 }
 
 func restartRuntime(dataDir, host string, port int, serviceName string, timeout time.Duration, force bool) error {

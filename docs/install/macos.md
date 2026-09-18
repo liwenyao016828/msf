@@ -67,6 +67,14 @@ sysctl net.inet.ip.forwarding
 
 系统数据位于 `/Library/Application Support/MSF`，网络恢复快照位于 `configs/network/darwin-state.json`。快照会记录原始 DNS 和 `net.inet.ip.forwarding`，恢复时不会假定其初始值一定为 `0`。
 
+忘记网页管理员密码时，使用已经安装的后台 helper 安全重置；命令会自动找到数据，无需填写目录：
+
+```bash
+sudo /Library/PrivilegedHelperTools/io.github.scoltzero.msf.daemon reset-password
+```
+
+新密码会隐藏输入并要求确认，重置后该管理员已有的登录会话立即失效。多管理员安装使用 `--user <用户名>` 选择目标账号，新密码仍在随后出现的隐藏提示中输入。完整说明见[命令行指南](../cli.md)。
+
 ## 更新、修复与卸载
 
 更新 App 时，先退出 MSF，将新版 `MSF.app` 替换到 `/Applications`，重新打开后在“连接设置”中执行后台修复，使 LaunchDaemon 使用新版内嵌后台。

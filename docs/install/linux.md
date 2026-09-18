@@ -78,6 +78,7 @@ sudo journalctl -u msf -f
 CLI：
 
 ```bash
+sudo msf start
 sudo msf status
 sudo msf stop
 sudo msf restart
@@ -87,7 +88,11 @@ sudo msf logs --lines 200 mihomo
 sudo msf doctor
 sudo msf cloudflare-redirect status
 sudo msf update
+sudo msf reset-password
+msf help
 ```
+
+完整参数、密码恢复、`start` 与 `serve` 的区别见[命令行完整指南](../cli.md)。普通安装忘记管理员密码时，只需运行 `sudo msf reset-password`，无需填写数据目录。
 
 `msf stop` 会向正在运行的管理进程发送优雅停止信号，管理进程退出前会停止它托管的 MosDNS 和 Mihomo 子进程。
 

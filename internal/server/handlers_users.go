@@ -209,26 +209,20 @@ func (a *App) handleResetUserPassword(w http.ResponseWriter, r *http.Request) {
 		Password    string `json:"password"`
 		NewPassword string `json:"new_password"`
 	}
-	_ = decodeJSON(r, &req)
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "bad_request", err.Error())
+		return
+	}
 	if req.Password == "" {
 		req.Password = req.NewPassword
 	}
-	if req.Password == "" {
-		req.Password = "admin123456"
-	}
-	if len(req.Password) < 8 {
-		writeError(w, http.StatusBadRequest, "bad_request", "password must be at least 8 characters")
-		return
-	}
-	hash, _ := bcrypt.GenerateFromPassword([]byte(normalizePasswordForStorage(req.Password)), bcrypt.DefaultCost)
-	_, err := a.DB.Exec(`update users set password=?,updated_at=? where id=?`, string(hash), time.Now(), id)
-	if err != nil {
+	if err := a.ResetUserPassword(id, req.Password); err != nil {
 		a.audit(currentUser(r), "user.reset_password", "users", strconv.FormatInt(id, 10), false, err.Error())
 		writeError(w, http.StatusBadRequest, "reset_failed", err.Error())
 		return
 	}
 	a.audit(currentUser(r), "user.reset_password", "users", strconv.FormatInt(id, 10), true, "")
-	writeJSON(w, http.StatusOK, map[string]any{"success": true, "password": req.Password, "plain_password": req.Password})
+	writeJSON(w, http.StatusOK, map[string]any{"success": true})
 }
 
 func (a *App) handleToggleUser(w http.ResponseWriter, r *http.Request) {

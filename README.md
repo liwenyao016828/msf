@@ -78,6 +78,29 @@
 
 </details>
 
+## 忘记管理员密码
+
+单管理员安装直接运行：
+
+```bash
+sudo msf reset-password
+```
+
+命令随后会提示输入两次新密码，输入过程不会回显。新密码**不写在命令后面**，也不会被清空或显示在成功输出中：
+
+```text
+新密码 / New password:
+再次输入 / Confirm password:
+```
+
+如果有多个管理员，使用明确的用户名选项：
+
+```bash
+sudo msf reset-password --user admin
+```
+
+重置只影响指定管理员，并使该账号现有登录会话失效。完整说明见[命令行指南](docs/cli.md)。
+
 ## 架构
 
 <p align="center">
@@ -90,6 +113,7 @@
 
 | 分类 | 文档 |
 |---|---|
+| 命令行 | [完整 CLI 指南](docs/cli.md) |
 | 路由器接入 | [总览](docs/guide/zh/router-integration.md)<br>[RouterOS](docs/guide/zh/routeros.md)<br>[爱快](docs/guide/zh/ikuai.md)<br>[OpenWrt](docs/guide/zh/openwrt.md)<br>[UniFi](docs/guide/zh/unifi.md) |
 | 运行参考 | [目录、端口与文件结构](docs/reference/runtime.md) |
 | Docker | [部署说明](docs/docker.md) |
