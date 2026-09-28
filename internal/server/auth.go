@@ -305,8 +305,11 @@ func roleAllows(role, method, path string) bool {
 	if selfServiceAllows(method, path) {
 		return true
 	}
-	if path == "/api/v1/settings/profile" || path == "/api/v1/settings/appearance" {
+	if path == "/api/v1/settings/profile" {
 		return role != "guest"
+	}
+	if path == "/api/v1/settings/appearance" || path == "/api/v1/settings/proxy-page" {
+		return method == http.MethodGet && role != "guest"
 	}
 	if role == "operator" {
 		return operatorAllows(method, path)
@@ -403,7 +406,8 @@ func tokenScopeAllows(scope, method, path string) bool {
 	case "operate":
 		return selfServiceAllows(method, path) ||
 			path == "/api/v1/settings/profile" ||
-			path == "/api/v1/settings/appearance" ||
+			(path == "/api/v1/settings/appearance" && method == http.MethodGet) ||
+			(path == "/api/v1/settings/proxy-page" && method == http.MethodGet) ||
 			operatorAllows(method, path)
 	case "read":
 		return readScopeAllows(method, path)
@@ -422,7 +426,7 @@ func readScopeAllows(method, path string) bool {
 	if method != http.MethodGet {
 		return false
 	}
-	if path == "/api/v1/auth/me" || path == "/api/v1/profile" || path == "/api/v1/settings/profile" || path == "/api/v1/settings/appearance" {
+	if path == "/api/v1/auth/me" || path == "/api/v1/profile" || path == "/api/v1/settings/profile" || path == "/api/v1/settings/appearance" || path == "/api/v1/settings/proxy-page" {
 		return true
 	}
 	if path == "/api/v1/version" ||

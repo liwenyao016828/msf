@@ -22,10 +22,11 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { api, apiData } from "@/lib/api";
 import { useLanguage, type AppLanguage } from "@/lib/localization";
-import { applyTheme, getInitialTheme, prefersDarkMode, reconcileTheme, themeOptions, type ThemeMode } from "@/lib/appearance";
+import { applyTheme, getInitialTheme, prefersDarkMode, isThemeMode, themeOptions, type ThemeMode } from "@/lib/appearance";
 import { applyCustomCSS, applySkin, getInitialSkin, isSkinId } from "@/lib/skin";
 import { applyAccentColor, isValidAccentColor } from "@/lib/accent";
 import { applySkinTint, parseSkinTint } from "@/lib/skinTint";
+import { applyContentPlateOpacityCss, parseContentPlateOpacityApi, CONTENT_PLATE_SETTINGS_STORAGE_KEY } from "@/lib/content-plate-opacity";
 
 const languageOptions: Array<{ id: AppLanguage; label: string }> = [
   { id: "zh-CN", label: "简体中文" },
@@ -66,27 +67,33 @@ export function AppHeader({ onToggleSidebar, onOpenDiagnostics, sidebarHidden = 
         if (data.language === "en-US" || data.language === "en") setLanguage("en-US");
         if (data.language === "zh-CN" || data.language === "zh") setLanguage("zh-CN");
         const localTheme = getInitialTheme();
-        const { mode, pushToServer } = reconcileTheme(data.theme, localTheme);
+        const mode = isThemeMode(data.theme) ? data.theme : "system";
         if (mode !== localTheme) {
           setTheme(mode);
           applyTheme(mode);
-        }
-        if (pushToServer) {
-          void api("/api/v1/settings/appearance", {
-            method: "PUT",
-            body: JSON.stringify({ theme: mode }),
-          }).catch(() => undefined);
         }
         const backendSkin = isSkinId(data.skin) ? data.skin : getInitialSkin();
         if (document.documentElement.dataset.skin !== backendSkin) applySkin(backendSkin);
         applyAccentColor(isValidAccentColor(data.accent_color) ? data.accent_color : "");
         applySkinTint(parseSkinTint(data.skin_tint));
         if (typeof data.custom_css === "string") applyCustomCSS(data.custom_css);
+        const scene = data.scene === "static" || data.scene === "neutral" ? data.scene : "dynamic";
+        const quality = data.quality === "full" || data.quality === "reduced" ? data.quality : "balanced";
+        document.documentElement.dataset.garyScene = scene;
+        document.documentElement.dataset.garyQuality = quality;
+        localStorage.setItem("msf-glass-scene", scene);
+        localStorage.setItem("msf-glass-quality", quality);
+        const opacity = parseContentPlateOpacityApi(data);
+        if (opacity) {
+          applyContentPlateOpacityCss(opacity);
+          localStorage.setItem(CONTENT_PLATE_SETTINGS_STORAGE_KEY, JSON.stringify(opacity));
+        }
       })
       .catch(() => undefined);
   }, [setLanguage]);
 
   const selectLanguage = (next: AppLanguage) => {
+    if (user?.role !== "admin") return;
     setLanguage(next);
     setLangOpen(false);
     void api("/api/v1/settings/appearance", {
@@ -108,6 +115,7 @@ export function AppHeader({ onToggleSidebar, onOpenDiagnostics, sidebarHidden = 
   }, [themeOpen, langOpen, userOpen]);
 
   const selectTheme = (mode: ThemeMode) => {
+    if (user?.role !== "admin") return;
     setTheme(mode);
     applyTheme(mode);
     setThemeOpen(false);
@@ -144,7 +152,7 @@ export function AppHeader({ onToggleSidebar, onOpenDiagnostics, sidebarHidden = 
         </div>
 
         <div className="gary-glass gary-glass--ultrathin gary-glass--overflow-visible pointer-events-auto ml-auto flex h-full items-center gap-0.5 rounded-[19.2px] p-1 md:gap-1">
-          <div className="relative">
+          {user?.role === "admin" && <div className="relative">
             <button
               type="button"
               onClick={(event) => {
@@ -182,9 +190,9 @@ export function AppHeader({ onToggleSidebar, onOpenDiagnostics, sidebarHidden = 
                 ))}
               </div>
             )}
-          </div>
+          </div>}
 
-          <div className="relative">
+          {user?.role === "admin" && <div className="relative">
             <button
               type="button"
               onClick={(event) => {
@@ -219,7 +227,7 @@ export function AppHeader({ onToggleSidebar, onOpenDiagnostics, sidebarHidden = 
                 ))}
               </div>
             )}
-          </div>
+          </div>}
 
           <div className="relative flex-shrink-0">
             <button

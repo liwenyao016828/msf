@@ -847,6 +847,10 @@ func (a *App) handleSettingsAppearanceGet(w http.ResponseWriter, r *http.Request
 }
 
 func (a *App) handleSettingsAppearancePut(w http.ResponseWriter, r *http.Request) {
+	if !a.requireAdmin(r) {
+		writeError(w, http.StatusForbidden, "admin_required", "仅管理员可以修改外观设置")
+		return
+	}
 	var req map[string]any
 	if err := decodeJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "bad_request", err.Error())

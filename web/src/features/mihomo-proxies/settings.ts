@@ -358,3 +358,13 @@ export function resetProxySettings(
 
 export const readSettings = readProxySettings;
 export const writeSettings = writeProxySettings;
+
+/** Only an existing local preference should be migrated; defaults are not a migration. */
+export function hasStoredProxySettings(storage: Pick<Storage, "getItem"> | undefined = defaultStorage()): boolean {
+  if (!storage) return false;
+  try {
+    return storage.getItem(PROXY_SETTINGS_KEY_V2) !== null || storage.getItem(PROXY_SETTINGS_KEY_V1) !== null;
+  } catch {
+    return false;
+  }
+}

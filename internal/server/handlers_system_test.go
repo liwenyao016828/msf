@@ -568,10 +568,10 @@ func TestAppearanceCustomCSSRequiresAdmin(t *testing.T) {
 		t.Fatalf("admin custom_css write failed: status=%d body=%s", allowed.Code, allowed.Body.String())
 	}
 
-	// 非 custom_css 的外观字段对非管理员保持原行为（全局外观可写）。
+	// 实例外观的任何字段均仅管理员可写。
 	themeOnly := requestJSON(t, app, http.MethodPut, "/api/v1/settings/appearance", viewer, map[string]any{"theme": "light"})
-	if themeOnly.Code != http.StatusOK {
-		t.Fatalf("viewer theme write = %d, want 200: %s", themeOnly.Code, themeOnly.Body.String())
+	if themeOnly.Code != http.StatusForbidden {
+		t.Fatalf("viewer theme write = %d, want 403: %s", themeOnly.Code, themeOnly.Body.String())
 	}
 }
 

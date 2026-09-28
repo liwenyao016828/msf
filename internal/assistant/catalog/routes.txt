@@ -171,6 +171,7 @@ GET /api/v1/services/{name}/logs
 GET /api/v1/settings
 GET /api/v1/settings/appearance
 GET /api/v1/settings/profile
+GET /api/v1/settings/proxy-page
 GET /api/v1/settings/structured
 GET /api/v1/setup/check
 GET /api/v1/setup/config
@@ -374,7 +375,9 @@ PUT /api/v1/profile
 PUT /api/v1/services/{name}/config
 PUT /api/v1/settings
 PUT /api/v1/settings/appearance
+POST /api/v1/settings/proxy-page
 PUT /api/v1/settings/profile
+PUT /api/v1/settings/proxy-page
 PUT /api/v1/settings/structured
 PUT /api/v1/setup/config
 PUT /api/v1/sing-box/config/{path...}

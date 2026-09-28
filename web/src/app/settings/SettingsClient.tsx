@@ -63,7 +63,7 @@ import {
 import { useLanguage } from "@/lib/localization";
 import { useAuth } from "@/lib/auth";
 import { cn } from "@/lib/utils";
-import { getInitialTheme, reconcileTheme } from "@/lib/appearance";
+import { getInitialTheme, isThemeMode } from "@/lib/appearance";
 import {
   CUSTOM_CSS_STORAGE_KEY,
   applyCustomCSS,
@@ -1755,14 +1755,8 @@ function AppearanceTab({ showToast }: { showToast: (message: string) => void }) 
     api("/api/v1/settings/appearance")
       .then((payload) => {
         const data = apiData<Record<string, string>>(payload, {});
-        const { mode: nextTheme, pushToServer } = reconcileTheme(data.theme, getInitialTheme());
+        const nextTheme = isThemeMode(data.theme) ? data.theme : "system";
         applyThemeMode(nextTheme);
-        if (pushToServer) {
-          void api("/api/v1/settings/appearance", {
-            method: "PUT",
-            body: JSON.stringify({ theme: nextTheme }),
-          }).catch(() => undefined);
-        }
         setLanguage(data.language === "en-US" || data.language === "en" ? "en-US" : "zh-CN");
         const nextSkin = isSkinId(data.skin) ? data.skin : getInitialSkin();
         setSkin(nextSkin);
@@ -3615,7 +3609,7 @@ export function SettingsClient({ initialTab }: { initialTab: TabId }) {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<TabId>(initialTab);
   const isAdmin = user?.role === "admin";
-  const visibleTabs = tabs.filter((tab) => tab.id !== "users" || isAdmin);
+  const visibleTabs = tabs.filter((tab) => (tab.id !== "users" && tab.id !== "appearance") || isAdmin);
 
   const changeTab = (tab: TabId) => {
     setActiveTab(tab);
@@ -3655,7 +3649,7 @@ export function SettingsClient({ initialTab }: { initialTab: TabId }) {
           {activeTab === "profile" && <ProfileTab showToast={showToast} />}
           {activeTab === "system" && <SystemTab showToast={showToast} isAdmin={isAdmin} />}
           {activeTab === "users" && (isAdmin ? <UsersSettingsPanel /> : <SolidPlate tone="strong" className="rounded-[19.2px] p-6 text-sm text-muted-foreground">当前账号没有用户管理权限。</SolidPlate>)}
-          {activeTab === "appearance" && <AppearanceTab showToast={showToast} />}
+          {activeTab === "appearance" && (isAdmin ? <AppearanceTab showToast={showToast} /> : <SolidPlate tone="strong" className="rounded-[19.2px] p-6 text-sm text-muted-foreground">仅管理员可以修改实例外观设置。</SolidPlate>)}
           {activeTab === "update" && <UpdateTab showToast={showToast} onNavigateSystem={() => changeTab("system")} />}
           {activeTab === "reset" && <ResetTab showToast={showToast} />}
         </div>

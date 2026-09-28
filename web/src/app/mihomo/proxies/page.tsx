@@ -54,13 +54,14 @@ function validationMessage(payload: unknown) { const row = asRecord(apiData(payl
 export default function MihomoProxiesPage() {
   useProxyScenePerformanceProfile();
   const { toasts, showToast } = useToaster();
-  const { settings, setSettings, resetSettings } = useProxySettings();
+  const { settings, setSettings, resetSettings, canEditSettings, saveError } = useProxySettings();
   const [search, setSearch] = useState(""); const [searchMode, setSearchMode] = useState<ProxySearchMode>("groups"); const [regex, setRegex] = useState(false); const deferredSearch = useDeferredValue(search); const [typeFilter, setTypeFilter] = useState("all"); const [autoRefresh, setAutoRefresh] = useState(true); const [reorderEnabled, setReorderEnabled] = useState(false); const [settingsOpen, setSettingsOpen] = useState(false); const [chainGroup, setChainGroup] = useState<ProxyGroupView | null>(null); const [editor, setEditor] = useState<"provider" | "group" | "manual" | null>(null); const [groupManagerOpen, setGroupManagerOpen] = useState(false); const [providerManagerOpen, setProviderManagerOpen] = useState(false);
   const [providerDraft, setProviderDraft] = useState<ProxyProviderDraft>(); const [groupDraft, setGroupDraft] = useState<ProxyGroupDraftView>(); const [groupConfigLoading, setGroupConfigLoading] = useState(false); const [manualDraft, setManualDraft] = useState<ProxyManualNodeDraft>(); const [editorKey, setEditorKey] = useState(""); const [editorBusy, setEditorBusy] = useState<string | null>(null); const [testingTarget, setTestingTarget] = useState<string | null>(null); const [updatingProvider, setUpdatingProvider] = useState<string | null>(null);
   const runtime = useProxyRuntime({ enabled: true, autoRefreshMs: autoRefresh ? 30_000 : 0, pageFallback: { url: settings.delayTestUrl, timeoutMs: settings.delayTimeoutMs }, settings: { autoDisconnectOnSwitch: settings.autoDisconnectOnSwitch } }); const { store, loading, refreshing, error, testingJobs } = runtime; const resolveChain = runtime.resolveChain;
   usePageReady(!loading);
   const { groupTraffic } = useProxyGroupTraffic({ enabled: !loading, intervalMs: 2_000 });
   useEffect(() => { if (error) showToast(error); }, [error, showToast]);
+  useEffect(() => { if (saveError) showToast(saveError); }, [saveError, showToast]);
 
   const baseGroups = useMemo(() => {
     const selectorSettings = settings.manageHiddenGroups ? { ...settings, hiddenGroups: [] } : settings;
@@ -134,8 +135,8 @@ export default function MihomoProxiesPage() {
   const openGroupManager = () => setGroupManagerOpen(true);
   const createGroup = () => { setGroupManagerOpen(false); setEditorKey(""); setGroupDraft({ name: "", type: "select", icon: "", proxies: "", url: "", interval: 300, lazy: false, tolerance: 50, strategy: "consistent-hashing", policyPriority: "", uselightgbm: false, collectdata: false, sampleRate: 0, preferAsn: false, advanced: "{}" }); setEditor("group"); };
   const createProvider = () => { setProviderManagerOpen(false); setEditorKey(""); setProviderDraft(undefined); setEditor("provider"); };
-  const moveGroup = (fromKey: string, toKey: string) => { const order = mergeStableOrder(settings.groupOrder.length ? settings.groupOrder : store.groupKeys, settings.groupOrder, store.groupKeys); const from = order.indexOf(fromKey); const to = order.indexOf(toKey); if (from < 0 || to < 0) return; order.splice(from, 1); order.splice(to, 0, fromKey); setSettings((current) => ({ ...current, groupOrder: order })); };
-  const toggleUserHiddenGroup = (group: ProxyGroupView) => setSettings((current) => ({ ...current, hiddenGroups: current.hiddenGroups.includes(group.name) ? current.hiddenGroups.filter((name) => name !== group.name) : [...current.hiddenGroups, group.name] }));
+  const moveGroup = (fromKey: string, toKey: string) => { if (!canEditSettings) return; const order = mergeStableOrder(settings.groupOrder.length ? settings.groupOrder : store.groupKeys, settings.groupOrder, store.groupKeys); const from = order.indexOf(fromKey); const to = order.indexOf(toKey); if (from < 0 || to < 0) return; order.splice(from, 1); order.splice(to, 0, fromKey); setSettings((current) => ({ ...current, groupOrder: order })); };
+  const toggleUserHiddenGroup = (group: ProxyGroupView) => canEditSettings && setSettings((current) => ({ ...current, hiddenGroups: current.hiddenGroups.includes(group.name) ? current.hiddenGroups.filter((name) => name !== group.name) : [...current.hiddenGroups, group.name] }));
   const switchMode = async (label: string) => { const mode = ({ "直连": "direct", "规则": "rule", "全局": "global" } as Record<string, string>)[label] || label; try { await api("/api/v1/mihomo/controller/configs", { method: "PATCH", body: JSON.stringify({ mode }) }); await runtime.refresh({ silent: true }); } catch (cause) { showToast(cause instanceof Error ? cause.message : "切换模式失败"); } };
   const testGroup = async (group: ProxyGroupView, node?: ProxyNodeView) => { setTestingTarget(node?.key || group.key); try { const job = node ? await runtime.testNode(node.key as ProxyKey, { groupKey: group.key as ProxyKey }) : await runtime.testGroup(group.key as ProxyKey); showToast(job.status === "cancelled" ? "测速已取消" : "测速完成"); } catch (cause) { showToast(cause instanceof Error ? cause.message : "测速失败"); } finally { setTestingTarget(null); } };
   const testProvider = async (provider: ProxyProviderView, node?: ProxyNodeView) => { setTestingTarget(node?.key || provider.id); try { const job = node ? await runtime.testNode(node.key as ProxyKey) : await runtime.testProvider(provider.id); showToast(job.status === "done" && job.failed ? "更新失败，正在使用旧缓存" : node ? "节点测速完成" : "供应商健康检查完成"); } catch (cause) { showToast(cause instanceof Error ? cause.message : "健康检查失败"); } finally { setTestingTarget(null); } };
@@ -256,7 +257,8 @@ export default function MihomoProxiesPage() {
           typeOptions={typeOptions}
           onTypeFilterChange={setTypeFilter}
           onSettings={() => setSettingsOpen(true)}
-          reorderEnabled={reorderEnabled}
+          canEditSettings={canEditSettings}
+          reorderEnabled={reorderEnabled && canEditSettings}
           onReorderToggle={() => setReorderEnabled((value) => !value)}
           onRestoreOrder={() => setSettings((current) => ({ ...current, groupOrder: [] }))}
         />
@@ -296,7 +298,7 @@ export default function MihomoProxiesPage() {
               onChain={setChainGroup}
               onEdit={openGroup}
               onToggleHidden={toggleUserHiddenGroup}
-              reorderEnabled={reorderEnabled}
+              reorderEnabled={reorderEnabled && canEditSettings}
               onMove={moveGroup}
               doubleColumn={settings.doubleColumn}
             />
@@ -335,7 +337,7 @@ export default function MihomoProxiesPage() {
         )}
       </div>
       <ProxyChainDialog open={Boolean(chainGroup)} groupName={chainGroup?.name} chain={chainView} onClose={() => setChainGroup(null)} />
-      <ProxySettingsDialog open={settingsOpen} settings={settingsView} onChange={(value) => setSettings((current) => ({ ...current, ...value, sortBy: value.sortBy as ProxyPageSettings["sortBy"] }))} onClose={() => setSettingsOpen(false)} onReset={resetSettings} />
+      <ProxySettingsDialog open={settingsOpen && canEditSettings} settings={settingsView} onChange={(value) => setSettings((current) => ({ ...current, ...value, sortBy: value.sortBy as ProxyPageSettings["sortBy"] }))} onClose={() => setSettingsOpen(false)} onReset={resetSettings} />
       <ProxyCollectionManagerDialog open={groupManagerOpen} kind="group" items={groupManagerItems} canCreate={status.canEditGroups} onClose={() => setGroupManagerOpen(false)} onCreate={createGroup} onEdit={(item) => { const group = groups.find((candidate) => candidate.key === item.id); if (group) chooseGroupForEditing(group); }} onDelete={deleteGroup} />
       <ProxyCollectionManagerDialog open={providerManagerOpen} kind="provider" items={providerManagerItems} canCreate={status.canEditProviders} onClose={() => setProviderManagerOpen(false)} onCreate={createProvider} onEdit={(item) => { const provider = providers.find((candidate) => candidate.id === item.id); if (provider) { setProviderManagerOpen(false); openProvider(provider); } }} onDelete={deleteProvider} />
       <ProxyProviderEditorDialog open={editor === "provider"} value={providerDraft} onClose={() => setEditor(null)} onValidate={(draft) => validateDraft("proxy-providers", draft)} onSave={(draft) => saveEditor("provider", draft)} />

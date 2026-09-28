@@ -481,6 +481,9 @@ func (a *App) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /api/v1/settings/profile", a.handleSettingsProfilePut)
 	mux.HandleFunc("GET /api/v1/settings/appearance", a.handleSettingsAppearanceGet)
 	mux.HandleFunc("PUT /api/v1/settings/appearance", a.handleSettingsAppearancePut)
+	mux.HandleFunc("GET /api/v1/settings/proxy-page", a.handleProxyPageSettingsGet)
+	mux.HandleFunc("PUT /api/v1/settings/proxy-page", a.handleProxyPageSettingsPut)
+	mux.HandleFunc("POST /api/v1/settings/proxy-page", a.handleProxyPageSettingsImport)
 
 	mux.HandleFunc("GET /api/v1/license-activation/status", a.handleLicenseStatus)
 	mux.HandleFunc("GET /api/v1/license-activation/hardware-fingerprint", a.handleHardwareFingerprint)

@@ -27,6 +27,7 @@ export function ProxyToolbar({
   typeOptions,
   onTypeFilterChange,
   onSettings,
+  canEditSettings,
   reorderEnabled,
   onReorderToggle,
   onRestoreOrder,
@@ -52,6 +53,7 @@ export function ProxyToolbar({
   typeOptions: string[];
   onTypeFilterChange: (value: string) => void;
   onSettings: () => void;
+  canEditSettings: boolean;
   reorderEnabled: boolean;
   onReorderToggle: () => void;
   onRestoreOrder: () => void;
@@ -94,9 +96,10 @@ export function ProxyToolbar({
           <button
             type="button"
             onClick={onReorderToggle}
+            disabled={!canEditSettings}
             aria-pressed={reorderEnabled}
             className={cn("inline-flex h-9 items-center gap-1.5 rounded-xl px-3 text-xs font-medium transition-colors", reorderEnabled ? "bg-primary/12 text-primary" : "bg-background/45 text-muted-foreground hover:text-foreground")}
-            title="拖动策略组自定义排序，仅保存到本地"
+            title="拖动策略组自定义排序，保存到本实例；仅管理员可修改"
           >
             <GripVertical className="h-4 w-4" />
             <span className="hidden sm:inline">自定义排序</span>
@@ -106,7 +109,7 @@ export function ProxyToolbar({
               恢复配置顺序
             </button>
           ) : null}
-          <button type="button" onClick={onSettings} className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-background/45 text-muted-foreground hover:text-foreground" title="显示设置">
+          <button type="button" onClick={onSettings} disabled={!canEditSettings} className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-background/45 text-muted-foreground hover:text-foreground" title="显示设置">
             <SlidersHorizontal className="h-4 w-4" />
           </button>
         </div>
@@ -146,7 +149,7 @@ export function ProxyToolbar({
         >
           正则
         </button>
-        <select value={sortBy} onChange={(event) => onSortChange(event.target.value)} className="h-10 rounded-xl bg-background/45 px-3 text-xs text-foreground outline-none focus:ring-2 focus:ring-primary/30" aria-label="排序">
+        <select value={sortBy} disabled={!canEditSettings} onChange={(event) => onSortChange(event.target.value)} className="h-10 rounded-xl bg-background/45 px-3 text-xs text-foreground outline-none focus:ring-2 focus:ring-primary/30" aria-label="排序">
           <option value="default">配置顺序</option>
           <option value="name-asc">名称升序</option>
           <option value="name-desc">名称降序</option>
