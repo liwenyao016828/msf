@@ -580,6 +580,11 @@ func (a *App) mihomoControllerFallback(path string) (any, bool) {
 			"external-controller": "127.0.0.1:9090",
 			"allow-lan":           true,
 			"log-level":           "info",
+			"dns": map[string]any{
+				"nameserver":              []string{"127.0.0.1:3333"},
+				"proxy-server-nameserver": []string{"127.0.0.1:8888"},
+				"default-nameserver":      []string{"127.0.0.1:8888"},
+			},
 		}
 		if isTUNProxyMode(setupCfg.LinuxProxyMode) {
 			cfg["tun"] = map[string]any{
@@ -593,9 +598,6 @@ func (a *App) mihomoControllerFallback(path string) (any, bool) {
 				"dns-hijack":            []string{},
 				"route-address":         mihomoTunRouteAddresses(setupCfg),
 				"route-exclude-address": mihomoTunRouteExcludeAddresses(setupCfg),
-			}
-			cfg["dns"] = map[string]any{
-				"proxy-server-nameserver": []string{"223.5.5.5", "119.29.29.29"},
 			}
 		} else {
 			cfg["redir-port"] = 7877

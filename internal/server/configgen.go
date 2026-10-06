@@ -538,9 +538,12 @@ dns:
   fake-ip-filter:
     - "*"
     - +.lan
+  nameserver:
+    - 127.0.0.1:3333
+  proxy-server-nameserver:
+    - 127.0.0.1:8888
   default-nameserver:
     - 127.0.0.1:8888
-%s
 proxy-groups:
   - {name: Proxies, type: select, proxies: [Manual, Direct]}
   - {name: Manual, type: select, proxies: [DIRECT], include-all: true, include-all-proxies: true, include-all-providers: true}
@@ -555,7 +558,7 @@ rules:
   - IP-CIDR,8.8.8.8/32,Proxies
   - IP-CIDR,1.1.1.1/32,Proxies
   - MATCH,Final
-%s`, selectedInterface(cfg.SelectedInterface), ipv6, transparentYAML, tunYAML, ipv6, normalizeMihomoFakeIPv4Range(cfg.FakeIPRangeV4), fakeIPv6RouteCIDR(cfg.FakeIPRangeV6), renderMihomoProxyServerNameserverYAML(cfg), providerYAML)
+%s`, selectedInterface(cfg.SelectedInterface), ipv6, transparentYAML, tunYAML, ipv6, normalizeMihomoFakeIPv4Range(cfg.FakeIPRangeV4), fakeIPv6RouteCIDR(cfg.FakeIPRangeV6), providerYAML)
 }
 
 func renderMihomoTransparentProxyYAML(cfg SetupConfig) string {
@@ -680,7 +683,7 @@ func renderMihomoProxyServerNameserverYAML(cfg SetupConfig) string {
 	if !isTUNProxyMode(cfg.LinuxProxyMode) {
 		return ""
 	}
-	return "  proxy-server-nameserver:\n    - 223.5.5.5\n    - 119.29.29.29\n"
+	return "  proxy-server-nameserver:\n    - 127.0.0.1:8888\n"
 }
 
 func ensureMihomoProxyServerNameserver(content string, cfg SetupConfig) string {

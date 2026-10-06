@@ -93,8 +93,7 @@ func TestEnsureGeneratedMihomoConfigCompatibilityRepairsOldGeneratedTunConfig(t 
 		"route-exclude-address:",
 		"- 192.168.0.0/16",
 		"proxy-server-nameserver:",
-		"- 223.5.5.5",
-		"- 119.29.29.29",
+		"- 127.0.0.1:8888",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("repaired TUN config missing %q:\n%s", want, text)

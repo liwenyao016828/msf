@@ -14,6 +14,52 @@ type mihomoDefaultRoutingConfig struct {
 	Rules         []string                  `yaml:"rules"`
 }
 
+func TestMihomoDefaultDNSResolversMatchMosDNSInterfaces(t *testing.T) {
+	template, ok := runtimeTemplateText("mihomo/config.yaml")
+	if !ok {
+		t.Fatal("embedded Mihomo default config is missing")
+	}
+	for _, mode := range []string{"nft", "tun"} {
+		t.Run(mode, func(t *testing.T) {
+			cfg := SetupConfig{LinuxProxyMode: mode, EnableIPv6: true, SelectedInterface: "eth0"}
+			for name, content := range map[string]string{
+				"template": renderMihomoTemplate(template, cfg),
+				"fallback": renderMihomoFallbackYAML(cfg),
+			} {
+				t.Run(name, func(t *testing.T) {
+					var parsed struct {
+						DNS struct {
+							Listen                string   `yaml:"listen"`
+							NameServer            []string `yaml:"nameserver"`
+							ProxyServerNameServer []string `yaml:"proxy-server-nameserver"`
+							DefaultNameServer     []string `yaml:"default-nameserver"`
+						} `yaml:"dns"`
+					}
+					if err := yaml.Unmarshal([]byte(content), &parsed); err != nil {
+						t.Fatalf("parse generated Mihomo config: %v", err)
+					}
+					if parsed.DNS.Listen != "0.0.0.0:6666" {
+						t.Fatalf("Fake-IP listener = %q, want 0.0.0.0:6666", parsed.DNS.Listen)
+					}
+					for _, resolver := range []struct {
+						field string
+						got   []string
+						want  string
+					}{
+						{"nameserver", parsed.DNS.NameServer, "127.0.0.1:3333"},
+						{"proxy-server-nameserver", parsed.DNS.ProxyServerNameServer, "127.0.0.1:8888"},
+						{"default-nameserver", parsed.DNS.DefaultNameServer, "127.0.0.1:8888"},
+					} {
+						if len(resolver.got) != 1 || resolver.got[0] != resolver.want {
+							t.Errorf("dns.%s = %v, want [%s]", resolver.field, resolver.got, resolver.want)
+						}
+					}
+				})
+			}
+		})
+	}
+}
+
 func TestMihomoDefaultRoutingIsCompleteAndDeduplicated(t *testing.T) {
 	content, ok := runtimeTemplateText("mihomo/config.yaml")
 	if !ok {

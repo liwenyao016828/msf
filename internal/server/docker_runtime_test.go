@@ -152,8 +152,17 @@ func TestDockerRuntimeDefaultsToTunGeneratedConfig(t *testing.T) {
 		t.Fatalf("docker tun fallback route-exclude-address missing LAN exclusion: %#v", tunFallback["route-exclude-address"])
 	}
 	dnsFallback, ok := fallbackConfig["dns"].(map[string]any)
-	if !ok || !stringSliceContainsAny(dnsFallback["proxy-server-nameserver"], "223.5.5.5") || !stringSliceContainsAny(dnsFallback["proxy-server-nameserver"], "119.29.29.29") {
-		t.Fatalf("docker tun fallback dns.proxy-server-nameserver missing: %#v", fallbackConfig["dns"])
+	if !ok {
+		t.Fatalf("docker tun fallback dns type = %T", fallbackConfig["dns"])
+	}
+	for field, want := range map[string]string{
+		"nameserver":              "127.0.0.1:3333",
+		"proxy-server-nameserver": "127.0.0.1:8888",
+		"default-nameserver":      "127.0.0.1:8888",
+	} {
+		if !stringSliceContainsAny(dnsFallback[field], want) {
+			t.Fatalf("docker tun fallback dns.%s = %#v, want %s", field, dnsFallback[field], want)
+		}
 	}
 	for _, unexpected := range []string{"redir-port", "tproxy-port", "routing-mark"} {
 		if _, ok := fallbackConfig[unexpected]; ok {
@@ -293,7 +302,7 @@ func TestLinuxNFTGeneratedConfigKeepsTransparentProxyDefaults(t *testing.T) {
 			t.Fatalf("linux nft mihomo config missing %q:\n%s", want, text)
 		}
 	}
-	for _, unexpected := range []string{"proxy-server-nameserver:", "dns-hijack: []", "route-address:"} {
+	for _, unexpected := range []string{"dns-hijack: []", "route-address:"} {
 		if strings.Contains(text, unexpected) {
 			t.Fatalf("linux nft mihomo config should not contain %q:\n%s", unexpected, text)
 		}

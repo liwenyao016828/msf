@@ -134,9 +134,12 @@ dns:
   fake-ip-filter:
     - "*"
     - +.lan
-  default-nameserver:
-    - 127.0.0.1:8888
+  # 目标域名使用 MosDNS 国外真实解析，节点与启动解析保持独立
   nameserver:
+    - 127.0.0.1:3333
+  proxy-server-nameserver:
+    - 127.0.0.1:8888
+  default-nameserver:
     - 127.0.0.1:8888
 
 proxy-groups:
