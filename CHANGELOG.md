@@ -1,5 +1,51 @@
 # 更新日志
 
+## v0.6.6 - 2026-10-10
+
+### 中文
+
+#### 命令行与账户恢复
+
+- 完善 `msf start`、`serve`、`status`、`stop`、`restart`、`logs`、`doctor` 等命令：普通操作会自动发现已安装的 MSF 实例，服务入口与后台启动职责更加明确，并补齐中英文使用文档。
+- 新增安全的 `msf reset-password` 流程：在终端隐藏输入新密码，只重置选定管理员；成功后使该账号的旧登录 JWT 失效并撤销刷新会话。独立创建的 API Token 仍由管理员单独管理。
+
+#### 代理页面与外观
+
+- 将代理页面的排序、布局、显示等偏好按 MSF 实例保存，换浏览器或重新登录后可恢复；服务器设置优先于旧浏览器缓存，旧偏好仅在管理员初始化新实例时导入。
+- 同步实例内的外观偏好，避免页面切换和会话更新后显示设置不一致。
+
+#### Mihomo 默认解析
+
+- 默认目标域名的真实 IP 查询改由 MosDNS 国外入口 `127.0.0.1:3333` 处理；代理节点域名和 DNS 上游启动解析继续使用独立的国内入口 `127.0.0.1:8888`。
+- 默认模板、NFT/TUN 生成配置、TUN 兼容修复和控制器离线回退信息使用同一组 DNS 地址。
+
+#### 升级注意事项
+
+- 新的 DNS 默认值用于生成或恢复的 Mihomo 配置；已选择自定义配置模式的实例继续使用自己的 DNS 设置。应用配置后再检查实际解析结果。
+- 重置管理员密码不会自动撤销独立创建的 API Token；如需停用，请在 API Token 页面单独处理。
+
+### English
+
+#### CLI and account recovery
+
+- Improved `msf start`, `serve`, `status`, `stop`, `restart`, `logs`, and `doctor`: ordinary commands discover the installed MSF instance, service and background entry points have clear roles, and the English and Chinese CLI guides are updated.
+- Added secure `msf reset-password`: new passwords are entered without echo, only the selected administrator is changed, and that account's existing login JWTs and refresh sessions are invalidated. Separately created API tokens remain under administrator control.
+
+#### Proxy page and appearance
+
+- Proxy page sorting, layout, and display preferences are saved per MSF instance and restored across browsers and logins. Server settings take precedence over stale browser cache; only an administrator can import old preferences into a new instance.
+- Appearance preferences are synchronized within the instance so page changes and session refreshes keep a consistent presentation.
+
+#### Mihomo default DNS
+
+- Real-IP lookups for target domains now default to the MosDNS foreign resolver at `127.0.0.1:3333`. Proxy-node names and DNS bootstrap resolution continue to use the separate domestic resolver at `127.0.0.1:8888`.
+- The default template, NFT/TUN generated configurations, TUN compatibility repair, and offline controller fallback use the same DNS endpoints.
+
+#### Upgrade notes
+
+- The new DNS defaults apply when Mihomo configuration is generated or restored. Instances in custom configuration mode retain their own DNS settings; verify resolution after applying a configuration.
+- Resetting an administrator password does not automatically revoke separately created API tokens. Revoke those on the API Token page if needed.
+
 ## v0.6.5 - 2026-09-13
 
 ### 中文

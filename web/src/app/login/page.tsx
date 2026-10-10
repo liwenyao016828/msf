@@ -61,7 +61,7 @@ function readLoginWavePalette(root: HTMLElement): LoginWavePalette {
   };
 }
 
-const LOGIN_ANNOUNCEMENT_ID = "2026-09-v0.6.5-mosdns-cache-runtime";
+const LOGIN_ANNOUNCEMENT_ID = "2026-10-v0.6.6-cli-proxy-dns";
 const LOGIN_ANNOUNCEMENT_HIDDEN_KEY = `msf-login-announcement:${LOGIN_ANNOUNCEMENT_ID}:hidden`;
 const LOGIN_ANNOUNCEMENT_SESSION_KEY = `msf-login-announcement:${LOGIN_ANNOUNCEMENT_ID}:session`;
 
@@ -235,24 +235,24 @@ export default function LoginPage() {
             <span className="msf-login-announcement-icon" aria-hidden="true"><Megaphone /></span>
             <div>
               <p>本次更新</p>
-              <h2 id="login-announcement-title">v0.6.5：MosDNS 缓存与运行稳定性修复</h2>
+              <h2 id="login-announcement-title">v0.6.6：命令行、代理偏好与 DNS 解析</h2>
             </div>
           </div>
 
           <ol className="msf-login-announcement-features">
             <li>
-              <strong>MosDNS FakeIP 缓存修复</strong>
-              <span>前置缓存不再持久化 FakeIP 响应，lazy 缓存保留期调整为 1 天；升级和清空 DNS 缓存会同步清理旧缓存与自动学习的 FakeIP 分流记忆。</span>
+              <strong>命令行与密码恢复</strong>
+              <span>常用命令现在会自动发现本机 MSF；新增安全的 reset-password，重置后该账号的旧登录会话立即失效。</span>
             </li>
             <li>
-              <strong>Mihomo 与运行可靠性</strong>
-              <span>修复 Rule Provider 更新 405、控制器会话误退出、MosDNS 分支误匹配和容器 CPU 指标问题；Sing-box 预留 DNS 端口已从 111 调整为 11101。</span>
+              <strong>代理偏好与真实解析</strong>
+              <span>代理页面偏好和外观按实例保存；Mihomo 默认用 127.0.0.1:3333 解析目标域名，节点和启动解析继续用 127.0.0.1:8888。</span>
             </li>
           </ol>
 
           <p className="msf-login-announcement-note">
             <strong>升级提示</strong>
-            已有安装升级后会自动修复旧 MosDNS 缓存模板；若手工配置仍使用 127.0.0.1:111，请改为 127.0.0.1:11101。
+            新 DNS 默认值用于生成或恢复的 Mihomo 配置；自定义配置模式继续使用自己的 DNS 设置。
           </p>
 
           <div className="msf-login-announcement-actions">

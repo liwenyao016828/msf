@@ -6,7 +6,7 @@ const styles = readFileSync(new URL("../../app/login/login.css", import.meta.url
 
 describe("versioned login announcement", () => {
   it("separates session close from permanent dismissal", () => {
-    expect(page).toContain('LOGIN_ANNOUNCEMENT_ID = "2026-09-v0.6.5-mosdns-cache-runtime"');
+    expect(page).toContain('LOGIN_ANNOUNCEMENT_ID = "2026-10-v0.6.6-cli-proxy-dns"');
     expect(page).toContain("window.sessionStorage.setItem(LOGIN_ANNOUNCEMENT_SESSION_KEY, \"1\")");
     expect(page).toContain("window.localStorage.setItem(LOGIN_ANNOUNCEMENT_HIDDEN_KEY, \"1\")");
     expect(page).toContain("不再显示");
@@ -16,10 +16,11 @@ describe("versioned login announcement", () => {
   });
 
   it("contains the requested release notes and responsive bubble layout", () => {
-    expect(page).toContain("v0.6.5：MosDNS 缓存与运行稳定性修复");
-    expect(page).toContain("前置缓存不再持久化 FakeIP 响应");
-    expect(page).toContain("Rule Provider 更新 405");
-    expect(page).toContain("111 调整为 11101");
+    expect(page).toContain("v0.6.6：命令行、代理偏好与 DNS 解析");
+    expect(page).toContain("reset-password");
+    expect(page).toContain("代理页面偏好和外观按实例保存");
+    expect(page).toContain("127.0.0.1:3333");
+    expect(page).toContain("127.0.0.1:8888");
     expect(page).toContain("升级提示");
     expect(styles).toContain(".msf-login-announcement");
     expect(styles).toContain("position: fixed");
@@ -31,12 +32,13 @@ describe("versioned login announcement", () => {
 
   it("pairs the new announcement with a bilingual versioned changelog", () => {
     const changelog = readFileSync(new URL("../../../../CHANGELOG.md", import.meta.url), "utf8");
-    const release = changelog.split("## v0.6.5 - 2026-09-13")[1]?.split("\n## v")[0];
+    const release = changelog.split("## v0.6.6 - 2026-10-10")[1]?.split("\n## v")[0];
     expect(release).toBeTruthy();
     expect(release).toContain("### 中文");
     expect(release).toContain("### English");
-    expect(release).toContain("FakeIP");
-    expect(release).toContain("11101");
+    expect(release).toContain("reset-password");
+    expect(release).toContain("Proxy page sorting");
+    expect(release).toContain("127.0.0.1:3333");
     expect(release).toContain("升级注意事项");
     expect(release).toContain("Upgrade notes");
     expect(page).not.toContain("2026-09-v0.6.3-performance");
