@@ -1,5 +1,63 @@
 # 更新日志
 
+## v0.6.7 - 2026-10-11
+
+### 中文
+
+#### 日志搜索与实时更新
+
+- 修复搜索结果变化时虚拟列表未及时重新计算、快速切换查询时旧响应覆盖新结果等问题；搜索支持防抖、回车立即查询和取消过期请求。
+- 日志尾部读取限制扫描范围，实时日志按批次更新并与快照按游标合并；超时查询会结束，后续轮询可继续恢复，避免重复更新和请求长期挂起。
+
+#### MosDNS 学习与缓存安全
+
+- 自动学习仅依据有效的 A/AAAA 地址回答及明确的直连、代理规则判断，忽略证据不足或相互冲突的记录，生成精确域名规则，避免把单次查询扩大成整个域名后缀的规则。
+- 替换学习文件和清理相关缓存时，运行中的 MosDNS 会受控短暂重启；操作开始后即使浏览器请求取消，也会完成写入和服务恢复。
+- 升级会识别已知旧版学习序列，只更新对应分流逻辑并清理旧学习记录和相关 DNS 缓存；自定义序列和上游配置保留。界面明确区分“清空 DNS 缓存”与“清空生成规则”。
+
+#### X/Twitter 默认分流
+
+- 新增可单独选择节点的 `X/Twitter` 默认代理分组，接入 MetaCubeX Twitter 规则集，覆盖 `x.com`、`twitter.com`、`twimg.com`、`t.co` 等域名。
+- Grok 相关域名继续优先匹配现有 AI 分组。
+
+#### 致谢
+
+- 感谢 [sh06y](https://github.com/sh06y) 对日志和 MosDNS 改进的贡献。
+
+#### 升级注意事项
+
+- 旧版 MosDNS 学习序列迁移时会清理对应学习记录和相关缓存，后续查询重新建立学习结果；运行中的 DNS 服务可能短暂重启。
+- `X/Twitter` 分组用于新生成或恢复的默认 Mihomo 配置；已有配置不会自动覆盖，可在配置管理中“恢复预设”。恢复会保留订阅和手动节点，并重置分组与分流规则。
+- macOS 继续提供未签名 Beta；首次启动请右键“打开”，或在“隐私与安全”中手动允许。
+
+### English
+
+#### Log search and live updates
+
+- Fixed virtual rows not being recalculated after search results changed and stale responses replacing newer queries. Search now supports debouncing, immediate queries with Enter, and cancellation of outdated requests.
+- Tail reads have bounded scan ranges. Live logs are updated in batches and merged with snapshots using cursors; timed-out queries finish so subsequent polls can recover, avoiding duplicate updates and indefinitely pending requests.
+
+#### MosDNS learning and cache safety
+
+- Automatic learning uses valid A/AAAA address answers and explicit direct/proxy routing evidence. Insufficient or conflicting records are ignored, and generated rules match exact domains rather than broadening a single query into a domain suffix rule.
+- Replacing learning files and clearing related caches briefly restarts a running MosDNS under a controlled operation. Once started, file updates and service restoration complete even if the browser request is canceled.
+- Upgrades detect known legacy learning sequences, update only the relevant routing logic, and clear old learned state and related DNS caches. Custom sequences and upstream settings are preserved. The UI distinguishes clearing DNS caches from clearing generated rules.
+
+#### Default X/Twitter routing
+
+- Added an independently selectable `X/Twitter` policy group backed by the MetaCubeX Twitter ruleset, covering `x.com`, `twitter.com`, `twimg.com`, `t.co`, and related domains.
+- Grok domains continue to match the existing AI group first.
+
+#### Thanks
+
+- Thanks to [sh06y](https://github.com/sh06y) for contributions to log and MosDNS improvements.
+
+#### Upgrade notes
+
+- Migrating legacy MosDNS learning sequences clears their learned state and related caches; subsequent queries rebuild the learning results. A running DNS service may restart briefly.
+- The `X/Twitter` group applies to newly generated or restored default Mihomo configurations. Existing configurations are not overwritten automatically. Use “Restore preset” in configuration management to load the updated defaults; subscriptions and manual nodes are retained, while policy groups and routing rules are reset.
+- macOS remains an unsigned Beta. On first launch, right-click and choose “Open”, or allow the app manually in “Privacy & Security”.
+
 ## v0.6.6 - 2026-10-10
 
 ### 中文

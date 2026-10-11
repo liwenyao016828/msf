@@ -61,7 +61,7 @@ function readLoginWavePalette(root: HTMLElement): LoginWavePalette {
   };
 }
 
-const LOGIN_ANNOUNCEMENT_ID = "2026-10-v0.6.6-cli-proxy-dns";
+const LOGIN_ANNOUNCEMENT_ID = "2026-10-v0.6.7-logs-dns-twitter";
 const LOGIN_ANNOUNCEMENT_HIDDEN_KEY = `msf-login-announcement:${LOGIN_ANNOUNCEMENT_ID}:hidden`;
 const LOGIN_ANNOUNCEMENT_SESSION_KEY = `msf-login-announcement:${LOGIN_ANNOUNCEMENT_ID}:session`;
 
@@ -235,24 +235,24 @@ export default function LoginPage() {
             <span className="msf-login-announcement-icon" aria-hidden="true"><Megaphone /></span>
             <div>
               <p>本次更新</p>
-              <h2 id="login-announcement-title">v0.6.6：命令行、代理偏好与 DNS 解析</h2>
+              <h2 id="login-announcement-title">v0.6.7：日志搜索、DNS 学习与 X/Twitter</h2>
             </div>
           </div>
 
           <ol className="msf-login-announcement-features">
             <li>
-              <strong>命令行与密码恢复</strong>
-              <span>常用命令现在会自动发现本机 MSF；新增安全的 reset-password，重置后该账号的旧登录会话立即失效。</span>
+              <strong>日志搜索与实时更新</strong>
+              <span>修复搜索崩溃、旧结果覆盖和重复更新；快速输入、切换服务和超时后恢复查询更稳定。</span>
             </li>
             <li>
-              <strong>代理偏好与真实解析</strong>
-              <span>代理页面偏好和外观按实例保存；Mihomo 默认用 127.0.0.1:3333 解析目标域名，节点和启动解析继续用 127.0.0.1:8888。</span>
+              <strong>DNS 学习与 X/Twitter</strong>
+              <span>MosDNS 学习按有效地址和明确规则判断，避免错误分流；新增 X/Twitter 默认分组，Grok 继续优先走 AI。</span>
             </li>
           </ol>
 
           <p className="msf-login-announcement-note">
             <strong>升级提示</strong>
-            新 DNS 默认值用于生成或恢复的 Mihomo 配置；自定义配置模式继续使用自己的 DNS 设置。
+            旧学习记录和相关缓存可能重建，DNS 服务可能短暂重启；新分组需生成或恢复默认配置后获得。
           </p>
 
           <div className="msf-login-announcement-actions">
