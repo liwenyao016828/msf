@@ -166,6 +166,7 @@ MSF 感谢以下项目和维护者公开其实现、接口、数据或素材。�
 | [CloudWeGo Eino](https://github.com/cloudwego/eino) | 管理员 AI 助手的 Go 原生 Agent Runtime、流式工具循环、Skill Middleware、Checkpoint 与人工确认后的跨请求恢复 | Apache-2.0 |
 | [Gzh256](https://github.com/Gzh256) | 多版本测试与验证 | 致谢 |
 | [Timeink88](https://github.com/Timeink88) | PR #13 的外观系统、DNS 与网络优化、GitHub 下载和运行治理主体实现 | 代码贡献者 |
+| [sh06y](https://github.com/sh06y) | [PR #20](https://github.com/scoltzero/msf/pull/20) 的日志搜索白屏修复、日志读取与实时更新优化，以及 MosDNS 分流学习校验和规则优先级改进 | 代码贡献者 |
 | [ipverse/country-ip-blocks](https://github.com/ipverse/country-ip-blocks) | 国内 UDP 直连使用的可复现 CN IPv4/IPv6 委派数据 | CC0-1.0 |
 
 上述鸣谢仅说明来源和贡献，不表示 MSF 与相关项目存在隶属、授权、合作或官方背书关系。MSF 名称与 Mizar 标识的使用边界见 [BRAND_POLICY.md](BRAND_POLICY.md)。

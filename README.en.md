@@ -164,6 +164,7 @@ MSF thanks the following projects and maintainers for publishing implementations
 | [nolangz/pixel2motion](https://github.com/nolangz/pixel2motion) | Mizar SVG fitting and brand-motion tooling | MIT |
 | [Gzh256](https://github.com/Gzh256) | Multi-release testing and validation | Acknowledgement |
 | [Timeink88](https://github.com/Timeink88) | Primary implementation of PR #13: appearance, DNS and networking improvements, GitHub downloads, and runtime operations | Code contributor |
+| [sh06y](https://github.com/sh06y) | [PR #20](https://github.com/scoltzero/msf/pull/20): log search crash fixes, faster log reads and live updates, plus MosDNS learning validation and rule priority improvements | Code contributor |
 
 These acknowledgements describe provenance and contributions only. They do not imply affiliation, authorization, partnership, or official endorsement. See [BRAND_POLICY.md](BRAND_POLICY.md) for use of the MSF name and Mizar identity.
 
