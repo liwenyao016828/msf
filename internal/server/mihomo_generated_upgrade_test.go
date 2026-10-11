@@ -57,7 +57,7 @@ proxy-providers:
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"name: Proxies", "name: AI", "RULE-SET,AI-Global,AI", "MATCH,Final"} {
+	for _, want := range []string{"name: Proxies", "name: AI", "name: X/Twitter", "RULE-SET,AI-Global,AI", "RULE-SET,Twitter,X/Twitter", "MATCH,Final"} {
 		if !strings.Contains(content, want) {
 			t.Errorf("refreshed generated config is missing %q", want)
 		}

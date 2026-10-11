@@ -162,6 +162,7 @@ proxy-groups:
   - {name: Spotify, type: select, icon: 'https://raw.githubusercontent.com/Koolson/Qure/refs/heads/master/IconSet/Color/Spotify.png', proxies: [Proxies, 香港节点, 新加坡节点, 韩国节点, 台湾节点, 日本节点, 美国节点, 省流节点, 高级节点, Manual, Airport]}
   - {name: PT, type: select, icon: 'https://raw.githubusercontent.com/Koolson/Qure/refs/heads/master/IconSet/Color/Media.png', proxies: [Direct, Proxies, 香港节点]}
   - {name: Telegram, type: select, icon: 'https://raw.githubusercontent.com/Koolson/Qure/refs/heads/master/IconSet/Color/Telegram_X.png', proxies: [Proxies, 香港节点, 新加坡节点, 韩国节点, 台湾节点, 日本节点, 美国节点]}
+  - {name: X/Twitter, type: select, icon: 'https://raw.githubusercontent.com/Koolson/Qure/refs/heads/master/IconSet/Color/Twitter.png', proxies: [Proxies, 香港节点, 新加坡节点, 韩国节点, 台湾节点, 日本节点, 美国节点, Manual, Airport]}
   - {name: 高级节点, !!merge <<: *UrlTest, filter: *FilterVIP, icon: 'https://raw.githubusercontent.com/Koolson/Qure/refs/heads/master/IconSet/Color/VIP.png'}
   - {name: 游戏节点, !!merge <<: *UrlTest, filter: *FilterGame, icon: 'https://raw.githubusercontent.com/Koolson/Qure/refs/heads/master/IconSet/Color/Game.png'}
   - {name: 香港节点, !!merge <<: *UrlTest, filter: *FilterHK, icon: 'https://raw.githubusercontent.com/Koolson/Qure/refs/heads/master/IconSet/Color/Hong_Kong.png'}
@@ -181,6 +182,7 @@ rule-providers:
   Spotify: {<<: *DomainMrs, path: ./rules/spotify.mrs, url: https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/spotify.mrs}
   Docker: {<<: *DomainMrs, path: ./rules/docker.mrs, url: https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/docker.mrs}
   Telegram: {<<: *DomainMrs, path: ./rules/telegram.mrs, url: https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/telegram.mrs}
+  Twitter: {<<: *DomainMrs, path: ./rules/twitter.mrs, url: https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/twitter.mrs}
   AI-Global: {<<: *DomainMrs, path: ./rules/category-ai-!cn.mrs, url: https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/category-ai-!cn.mrs}
   AIChatCN: { <<: *DomainMrs, path: ./rules/category-ai-cn.mrs, url: https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/category-ai-cn.mrs}
   YouTube: {<<: *DomainMrs, path: ./rules/youtube.mrs, url: https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/youtube.mrs}
@@ -277,6 +279,7 @@ rules:
   - RULE-SET,Docker,Proxies
   - RULE-SET,GitHub,Proxies
   - RULE-SET,Telegram,Telegram
+  - RULE-SET,Twitter,X/Twitter
   - RULE-SET,TikTok,TikTok
   - RULE-SET,PayPal,Proxies
 

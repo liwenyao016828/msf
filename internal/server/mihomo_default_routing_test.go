@@ -87,7 +87,7 @@ func TestMihomoDefaultRoutingIsCompleteAndDeduplicated(t *testing.T) {
 		"Proxies", "Manual", "Final", "Speedtest", "Direct",
 		"Google", "AI", "Game", "Apple", "Microsoft",
 		"Netflix", "YouTube", "Disney+", "GlobalMedia", "BiliBili", "Scholar",
-		"TikTok", "Spotify", "PT", "Telegram", "Airport",
+		"TikTok", "Spotify", "PT", "Telegram", "X/Twitter", "Airport",
 	} {
 		if groups[name] == nil {
 			t.Errorf("missing English policy group %q", name)
@@ -190,17 +190,21 @@ func TestMihomoDefaultRoutingIsCompleteAndDeduplicated(t *testing.T) {
 	}
 
 	assertMihomoProviderShape(t, cfg.RuleProviders, "GlobalScholar", "classical", "text")
+	assertMihomoProviderShape(t, cfg.RuleProviders, "Twitter", "domain", "mrs")
 	for _, provider := range []string{"BiliBili", "Disney", "HBOUSA", "HBOHK", "Bahamut", "MyTVSUPER", "PayPal", "Epic", "Xbox", "PlayStation"} {
 		assertMihomoProviderShape(t, cfg.RuleProviders, provider, "classical", "yaml")
 	}
 
-	for before, after := range map[string]string{
-		"RULE-SET,AI-Global,AI":        "RULE-SET,Google,Google",
-		"RULE-SET,YouTube,YouTube":     "RULE-SET,Google,Google",
-		"RULE-SET,BiliBili,BiliBili":   "RULE-SET,China-Domain,Direct",
-		"RULE-SET,China-Domain,Direct": "MATCH,Final",
-		"RULE-SET,ChinaIP,Direct":      "MATCH,Final",
+	for _, order := range [][2]string{
+		{"RULE-SET,AI-Global,AI", "RULE-SET,Google,Google"},
+		{"RULE-SET,AI-Global,AI", "RULE-SET,Twitter,X/Twitter"},
+		{"RULE-SET,Twitter,X/Twitter", "RULE-SET,China-Domain,Direct"},
+		{"RULE-SET,YouTube,YouTube", "RULE-SET,Google,Google"},
+		{"RULE-SET,BiliBili,BiliBili", "RULE-SET,China-Domain,Direct"},
+		{"RULE-SET,China-Domain,Direct", "MATCH,Final"},
+		{"RULE-SET,ChinaIP,Direct", "MATCH,Final"},
 	} {
+		before, after := order[0], order[1]
 		if ruleIndex(cfg.Rules, before) >= ruleIndex(cfg.Rules, after) {
 			t.Errorf("rule %q must appear before %q", before, after)
 		}
