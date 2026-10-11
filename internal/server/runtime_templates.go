@@ -57,13 +57,18 @@ func isRuntimeStructuralTemplate(rel string) bool {
 	case strings.HasPrefix(rel, "mosdns/sub_config/"):
 		return true
 	case strings.HasPrefix(rel, "mosdns/adguard/"):
-		return true
+		// adguard/config.json and its downloaded rule artifacts are mutable
+		// rule-source state. Replacing them during generated-config refreshes
+		// silently restores the bundled sources and discards user additions.
+		return false
 	case strings.HasPrefix(rel, "mosdns/webinfo/"):
 		return true
 	case strings.HasPrefix(rel, "mosdns/nft/"):
 		return true
 	case strings.HasPrefix(rel, "mosdns/srs/") && strings.HasSuffix(rel, ".json"):
-		return true
+		// SRS JSON files contain user-editable online source metadata. The SRS
+		// artifacts and their metadata must survive restarts and MSF upgrades.
+		return false
 	case rel == "mihomo/config.yaml", rel == "mihomo/phone_config.yaml":
 		return true
 	default:

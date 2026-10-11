@@ -10,6 +10,7 @@ plugins:
         exec: $sequence_local
       - matches:                                           #对于白名单中无IP的域名生成无v6清单
         - "fast_mark 8"
+        - switch3 'A'                                      # 永久无地址记忆仅用于兼容模式
         - "rcode 0 3"
         - "!resp_ip 2000::/3"
         exec: $my_nov6list  
@@ -51,6 +52,7 @@ plugins:
       - matches:                                           #上游dns未返回ip或者返回了受污染的ip
         - "rcode 0 3"
         - "fast_mark 13 16"
+        - switch3 'A'
         - "!resp_ip 2000::/3"
         - "!resp_ip ::1 ::2 ::3"
         exec: fast_mark 20
@@ -74,6 +76,10 @@ plugins:
         - "fast_mark 21"
         - "!fast_mark 17"                                  #对于列表外的域名此时尚未请求任何上游dns，不能结束
         exec: exit
+      - matches:
+        - switch3 'B'
+        - fast_mark 13 16
+        exec: exit                                         # 保留 NXDOMAIN、NODATA、SERVFAIL 和 REFUSED
       - matches: switch3 'A'                               #兼容模式处理列表外域名
         exec: $sequence_not_in_list_leak_v6
       - matches: switch3 'B'                               #安全模式处理列表外域名

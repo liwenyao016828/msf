@@ -1,5 +1,43 @@
 # 更新日志
 
+## v0.6.7.1 - 2026-10-11
+
+### 中文
+
+#### MosDNS 安全模式修正
+
+- 安全模式下，国外解析失败不再回退国内 DNS；保留 SERVFAIL、REFUSED、NXDOMAIN 与正常无地址回答的区别，避免回退答案进入安全模式缓存。
+- 安全模式不再写入或使用永久“无 IPv4／IPv6”学习记录；前置缓存不再复用过期应答，避免旧负回答持续阻止后续恢复。兼容模式保留现有解析策略。
+- 升级识别 v0.6.7 等已知旧版配置，迁移对应分流与缓存设置，并清理旧学习记录及相关缓存；保留自定义上游、监听端口、缓存容量和无法识别的自定义分流序列。
+
+#### 用户规则源保护
+
+- 重新生成配置时保留用户编辑的 AdGuard 规则源、已下载规则及 SRS 在线规则源元数据，避免被内置默认来源覆盖。
+
+#### 升级注意事项与已知限制
+
+- 迁移时学习记录和相关缓存会重新建立，运行中的 MosDNS 可能短暂重启。安全模式遇到上游故障会明确返回失败，不再以国内回答替代。
+- 本版本不包含 MosDNS 内核补丁，也不会自动修改用户更新的内核。已确认 `yyysuo/mosdns` 的 `b93784b` 内核可能在单次上游超时后关闭共享上游，导致后续请求无法自行恢复；此问题仍待上游修复，本次配置修正不解决该内核缺陷。
+- 感谢 [sh06y](https://github.com/sh06y) 在 PR #20 中提出的安全模式改进和回退风险反馈。
+
+### English
+
+#### MosDNS safe-mode fixes
+
+- Foreign-resolution failures in safe mode no longer fall back to domestic DNS. SERVFAIL, REFUSED, NXDOMAIN and valid no-address responses remain distinct, preventing domestic fallback answers from entering the safe-mode cache.
+- Safe mode no longer writes or consumes permanent no-IPv4/no-IPv6 learning records. Its front cache no longer serves expired responses, allowing recovery after stale negative answers expire. Compatibility mode retains its existing resolution policy.
+- Upgrades recognize known configurations including v0.6.7, migrate the affected routing and cache settings, and clear old learned records and related caches. Custom upstreams, listener ports, cache sizes and unrecognized custom routing sequences are preserved.
+
+#### User rule-source preservation
+
+- Generated-config refreshes preserve user-edited AdGuard sources, downloaded rules and SRS online rule-source metadata instead of replacing them with bundled defaults.
+
+#### Upgrade notes and known limitation
+
+- Migration rebuilds learned records and related caches and may briefly restart a running MosDNS. Safe mode now returns upstream failures instead of substituting domestic answers.
+- This release does not include a MosDNS core patch or automatically modify user-installed core updates. The reference `yyysuo/mosdns` core at `b93784b` can close a shared upstream after one request timeout, preventing subsequent queries from recovering without a restart. This remains an upstream issue; the configuration fixes in this release do not repair that core defect.
+- Thanks to [sh06y](https://github.com/sh06y) for the safe-mode improvements and fallback-risk feedback in PR #20.
+
 ## v0.6.7 - 2026-10-11
 
 ### 中文

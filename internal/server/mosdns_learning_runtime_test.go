@@ -146,8 +146,12 @@ func TestMosDNSLearningRuntime(t *testing.T) {
 							want = "2400:3200::1"
 						}
 					}
-					if (mode == "B" && name == "empty.test") || (qt == dnsmessage.TypeAAAA && (name == "empty.domestic.test" || (mode == "A" && name == "failed.domestic.test"))) {
-						if len(msg.Answers) != 0 {
+					if (mode == "B" && (name == "failed.test" || name == "empty.test" || name == "failed.domestic.test" || name == "empty.domestic.test")) || (qt == dnsmessage.TypeAAAA && (name == "empty.domestic.test" || (mode == "A" && name == "failed.domestic.test"))) {
+						wantCode := dnsmessage.RCodeSuccess
+						if mode == "B" && (name == "failed.test" || name == "failed.domestic.test") {
+							wantCode = dnsmessage.RCodeServerFailure
+						}
+						if len(msg.Answers) != 0 || msg.RCode != wantCode {
 							t.Fatalf("%s should have no answer: %v", name, msg)
 						}
 						continue

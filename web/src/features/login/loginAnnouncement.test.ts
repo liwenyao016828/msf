@@ -6,7 +6,7 @@ const styles = readFileSync(new URL("../../app/login/login.css", import.meta.url
 
 describe("versioned login announcement", () => {
   it("separates session close from permanent dismissal", () => {
-    expect(page).toContain('LOGIN_ANNOUNCEMENT_ID = "2026-10-v0.6.7-logs-dns-twitter"');
+    expect(page).toContain('LOGIN_ANNOUNCEMENT_ID = "2026-10-v0.6.7.1-dns-safe-mode"');
     expect(page).toContain("window.sessionStorage.setItem(LOGIN_ANNOUNCEMENT_SESSION_KEY, \"1\")");
     expect(page).toContain("window.localStorage.setItem(LOGIN_ANNOUNCEMENT_HIDDEN_KEY, \"1\")");
     expect(page).toContain("不再显示");
@@ -16,10 +16,10 @@ describe("versioned login announcement", () => {
   });
 
   it("contains the requested release notes and responsive bubble layout", () => {
-    expect(page).toContain("v0.6.7：日志搜索、DNS 学习与 X/Twitter");
-    expect(page).toContain("日志搜索与实时更新");
-    expect(page).toContain("MosDNS 学习按有效地址和明确规则判断");
-    expect(page).toContain("Grok 继续优先走 AI");
+    expect(page).toContain("v0.6.7.1：DNS 安全模式修补");
+    expect(page).toContain("失败处理与缓存恢复");
+    expect(page).toContain("安全模式取消国内 DNS 回退");
+    expect(page).toContain("刷新配置不再覆盖用户添加的广告与分流规则源");
     expect(page).toContain("DNS 服务可能短暂重启");
     expect(page).toContain("升级提示");
     expect(styles).toContain(".msf-login-announcement");
@@ -32,16 +32,16 @@ describe("versioned login announcement", () => {
 
   it("pairs the new announcement with a bilingual versioned changelog", () => {
     const changelog = readFileSync(new URL("../../../../CHANGELOG.md", import.meta.url), "utf8");
-    const release = changelog.split("## v0.6.7 - 2026-10-11")[1]?.split("\n## v")[0];
+    const release = changelog.split("## v0.6.7.1 - 2026-10-11")[1]?.split("\n## v")[0];
     expect(release).toBeTruthy();
     expect(release).toContain("### 中文");
     expect(release).toContain("### English");
-    expect(release).toContain("Log search and live updates");
-    expect(release).toContain("MosDNS learning and cache safety");
-    expect(release).toContain("Default X/Twitter routing");
+    expect(release).toContain("MosDNS safe-mode fixes");
+    expect(release).toContain("User rule-source preservation");
+    expect(release).toContain("This release does not include a MosDNS core patch");
     expect(release).toContain("sh06y");
     expect(release).toContain("升级注意事项");
     expect(release).toContain("Upgrade notes");
-    expect(page).not.toContain("2026-10-v0.6.6-cli-proxy-dns");
+    expect(page).not.toContain("2026-10-v0.6.7-logs-dns-twitter");
   });
 });

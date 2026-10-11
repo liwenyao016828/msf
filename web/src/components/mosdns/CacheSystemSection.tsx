@@ -261,7 +261,7 @@ function CacheStrategyPanel({
                 <path d="M12 17h.01" />
               </svg>
             </div>
-            <p className="text-xs text-muted-foreground mt-0.5">启用全部缓存(兼容/安全)与 fakeip</p>
+            <p className="text-xs text-muted-foreground mt-0.5">全部缓存；安全模式前置缓存不复用过期应答，无地址记忆不生效</p>
           </div>
           <SwitchToggle checked={strategy.expiredCache2} onToggle={onToggleCache2} />
         </div>

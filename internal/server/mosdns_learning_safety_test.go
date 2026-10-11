@@ -243,6 +243,120 @@ func TestMosDNSLearningMigrationRetryDoesNotClearFreshState(t *testing.T) {
 	}
 }
 
+func TestMosDNSLearningMigrationFromV067ClearsUnsafeState(t *testing.T) {
+	a := newTestApp(t)
+	if err := os.Remove(filepath.Join(a.DataDir, mosDNSLearningMigrationMarker)); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(a.DataDir, "data/mosdns-learning-v3"), []byte("3\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"process_v4.yaml", "process_v6.yaml", "not_in_list_noleak_v4.yaml", "not_in_list_noleak_v6.yaml", "config.yaml", "cache.yaml"} {
+		data, err := os.ReadFile(filepath.Join("testdata/mosdns_learning_v067", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		rel := "configs/mosdns/sub_config/" + name
+		if name == "config.yaml" {
+			rel = "configs/mosdns/config.yaml"
+			data = []byte(strings.ReplaceAll(string(data), `listen: ":53"`, `listen: ":15353"`))
+		}
+		if name == "cache.yaml" {
+			data = []byte(strings.ReplaceAll(string(data), "size: 20000000", "size: 12345"))
+		}
+		if err := a.writeTextFile(rel, string(data)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, name := range []string{"nov4rule.txt", "nov4list.txt", "nov6rule.txt", "nov6list.txt", "realiprule.txt", "fakeiprule.txt"} {
+		if err := a.writeTextFile("configs/mosdns/gen/"+name, "stale.test\n"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := a.writeTextFile("configs/mosdns/cache/cache_all_noleak.dump", "stale fallback answer"); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.EnsureBaseLayout(); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"nov4rule.txt", "nov4list.txt", "nov6rule.txt", "nov6list.txt", "realiprule.txt", "fakeiprule.txt"} {
+		got, err := a.readTextFile("configs/mosdns/gen/" + name)
+		if err != nil || got != "" {
+			t.Fatalf("old learning survived: %s %q %v", name, got, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(a.DataDir, "configs/mosdns/cache/cache_all_noleak.dump")); !os.IsNotExist(err) {
+		t.Fatal("old fallback cache survived")
+	}
+	for _, name := range []string{"not_in_list_noleak_v4.yaml", "not_in_list_noleak_v6.yaml"} {
+		got, err := a.readTextFile("configs/mosdns/sub_config/" + name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(got, "$sequence_local") || strings.Contains(got, "$my_nov") {
+			t.Fatalf("unsafe v0.6.7 sequence survived: %s", name)
+		}
+	}
+	main, _ := a.readTextFile("configs/mosdns/config.yaml")
+	if !strings.Contains(main, ":15353") {
+		t.Fatal("custom listener overwritten")
+	}
+	var doc yaml.Node
+	if err := yaml.Unmarshal([]byte(main), &doc); err != nil {
+		t.Fatal(err)
+	}
+	gates := 0
+	for _, tag := range []string{"sequence_6666", "sequence_requery"} {
+		for _, rule := range mosDNSSequenceArgs(&doc, tag).Content {
+			m := mosDNSYAMLField(rule, "matches")
+			if m == nil || m.Kind != yaml.SequenceNode {
+				continue
+			}
+			negative, compat := false, false
+			for _, v := range m.Content {
+				negative = negative || v.Value == "fast_mark 2" || v.Value == "fast_mark 3"
+				compat = compat || v.Value == "switch3 'A'"
+			}
+			if negative {
+				gates++
+				if !compat {
+					t.Fatal("safe mode still uses permanent negative memory")
+				}
+			}
+		}
+	}
+	if gates != 4 {
+		t.Fatalf("negative gates=%d", gates)
+	}
+	cache, _ := a.readTextFile("configs/mosdns/sub_config/cache.yaml")
+	var caches struct {
+		Plugins []struct {
+			Tag  string
+			Args struct {
+				Size int
+				Lazy int `yaml:"lazy_cache_ttl"`
+			}
+		}
+	}
+	if err := yaml.Unmarshal([]byte(cache), &caches); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range caches.Plugins {
+		if p.Args.Size != 12345 {
+			t.Fatal("custom cache capacity overwritten")
+		}
+		if p.Tag == mosDNSCacheAllNoLeakTag && p.Args.Lazy != 0 {
+			t.Fatal("strict cache still serves expired data")
+		}
+		if p.Tag == mosDNSCacheAllTag && p.Args.Lazy != 86400 {
+			t.Fatal("compatibility cache policy changed")
+		}
+	}
+	if _, err := os.Stat(filepath.Join(a.DataDir, mosDNSLearningMigrationMarker)); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestMosDNSLearningConfiguredRangesReachAuditAndUpstreamAPIs(t *testing.T) {
 	a := newTestApp(t)
 	cfg := SetupConfig{FakeIPRangeV4: "100.64.0.0/10", FakeIPRangeV6: "fd00::/8"}

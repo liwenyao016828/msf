@@ -61,7 +61,7 @@ function readLoginWavePalette(root: HTMLElement): LoginWavePalette {
   };
 }
 
-const LOGIN_ANNOUNCEMENT_ID = "2026-10-v0.6.7-logs-dns-twitter";
+const LOGIN_ANNOUNCEMENT_ID = "2026-10-v0.6.7.1-dns-safe-mode";
 const LOGIN_ANNOUNCEMENT_HIDDEN_KEY = `msf-login-announcement:${LOGIN_ANNOUNCEMENT_ID}:hidden`;
 const LOGIN_ANNOUNCEMENT_SESSION_KEY = `msf-login-announcement:${LOGIN_ANNOUNCEMENT_ID}:session`;
 
@@ -235,24 +235,24 @@ export default function LoginPage() {
             <span className="msf-login-announcement-icon" aria-hidden="true"><Megaphone /></span>
             <div>
               <p>本次更新</p>
-              <h2 id="login-announcement-title">v0.6.7：日志搜索、DNS 学习与 X/Twitter</h2>
+              <h2 id="login-announcement-title">v0.6.7.1：DNS 安全模式修补</h2>
             </div>
           </div>
 
           <ol className="msf-login-announcement-features">
             <li>
-              <strong>日志搜索与实时更新</strong>
-              <span>修复搜索崩溃、旧结果覆盖和重复更新；快速输入、切换服务和超时后恢复查询更稳定。</span>
+              <strong>失败处理与缓存恢复</strong>
+              <span>安全模式取消国内 DNS 回退，不再永久记住无地址结果；前置缓存停止复用过期回答。</span>
             </li>
             <li>
-              <strong>DNS 学习与 X/Twitter</strong>
-              <span>MosDNS 学习按有效地址和明确规则判断，避免错误分流；新增 X/Twitter 默认分组，Grok 继续优先走 AI。</span>
+              <strong>升级与规则源保护</strong>
+              <span>迁移旧学习和缓存状态，保留自定义上游；刷新配置不再覆盖用户添加的广告与分流规则源。</span>
             </li>
           </ol>
 
           <p className="msf-login-announcement-note">
             <strong>升级提示</strong>
-            旧学习记录和相关缓存可能重建，DNS 服务可能短暂重启；新分组需生成或恢复默认配置后获得。
+            升级会重建相关学习与缓存，DNS 服务可能短暂重启；内核超时后无法恢复的问题仍待上游修复。
           </p>
 
           <div className="msf-login-announcement-actions">

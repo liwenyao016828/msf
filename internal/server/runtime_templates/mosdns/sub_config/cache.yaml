@@ -20,7 +20,9 @@ plugins:
     type: cache
     args:
       size: 20000000
-      lazy_cache_ttl: 86400
+      # A refreshed Fake-IP answer is excluded from this cache. Reusing an
+      # expired negative answer would otherwise keep the old denial alive.
+      lazy_cache_ttl: 0
       exclude_ip:
         - 28.0.0.0/8
         - f2b0::/18

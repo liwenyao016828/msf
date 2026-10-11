@@ -10,6 +10,7 @@ plugins:
         exec: $sequence_local
       - matches:                                           #对于白名单中无IP的域名生成无v4清单
         - "fast_mark 8"
+        - switch3 'A'                                      # 永久无地址记忆仅用于兼容模式
         - "rcode 0 3"
         - "!resp_ip 0.0.0.0/0"
         exec: $my_nov4list
@@ -58,6 +59,10 @@ plugins:
         exec: $sequence_local_fake_exit
       - matches: fast_mark 19                              #未开启cntomihomo开关的情况则接受上游返回的realip
         exec: exit
+      - matches:
+        - switch3 'B'
+        - fast_mark 13 16
+        exec: exit                                         # 安全模式保留显式直连规则的错误/负回答
       - matches: switch3 'A'                               #兼容模式处理列表外域名
         exec: $sequence_not_in_list_leak_v4
       - matches: switch3 'B'                               #安全模式处理列表外域名

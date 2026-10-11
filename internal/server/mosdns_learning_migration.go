@@ -8,25 +8,26 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"gopkg.in/yaml.v3"
 )
 
-const mosDNSLearningMigrationMarker = "data/mosdns-learning-v3"
+const mosDNSLearningMigrationMarker = "data/mosdns-learning-v4"
 
 // Fingerprints cover sequence args only (canonical JSON), never upstreams or
-// the whole file. The two accepted versions are v0.6.6 and PR #20's 608370e.
+// the whole file. Accepted versions include v0.6.6, PR #20's 608370e and v0.6.7.
 // Unknown/custom sequences are left intact rather than silently replaced.
 var mosDNSLearningMigrations = []struct {
 	file, tag string
-	legacy    [2]string
+	legacy    []string
 }{
-	{"process_v4.yaml", "sequence_ipv4", [2]string{"3a32a653151290b7193ecb78e5a49b3434db875c150129af76eceb5055c0964f", "c23ec04cf936955b7ae6d767dc30ed844ba143c30721a2609d65e2eef3ca0eba"}},
-	{"process_v6.yaml", "sequence_ipv6", [2]string{"8462171883a7332e0ad269b6bc3ee957adbd6b349ea5dafa818d247e7bac58be", "96126ec025dd0ed38339222c38afbb29560133dc4646b32efba43eb84c98f7e1"}},
-	{"not_in_list_ipmatch.yaml", "sequence_not_in_list_ipmatch", [2]string{"b0f0d5fc3ce3e33623d162a15421ed4c6b39a208760d483eef711aadeac6da13", "7e4df547512c60e188961c3d136d653c73b8e3f356fe2e013cb950c1d906529e"}},
-	{"not_in_list_noleak_v4.yaml", "sequence_not_in_list_noleak_v4", [2]string{"f6cad30b30e1c05040f7f697807a932bac4a27f776becd39a3ef236f279e7412", "4f83618d83d4b2481e381ac4eeef9847182a05fa2f3f168f41b52fe0e50370e2"}},
-	{"not_in_list_noleak_v6.yaml", "sequence_not_in_list_noleak_v6", [2]string{"14fe9049a86cfa9e53dfb477715e3c5057a5cce09c8d53bb6ca938c88699723c", "1a3c31abaf061c5811546c9d13ce62ce0a5d16ffbdb44f7fc6ac99cac3a14cf6"}},
-	{"forward_1.yaml", "sequence_fakeip_addlist", [2]string{"42f5c39afe7a51c00153ae095d6e32ba7952e84ae89238fad51dceb14af6be58", "8bd389444ea3ab0dbb3ccb19c09bf48fdb79955ce9c53a39331844d272e84a37"}},
+	{"process_v4.yaml", "sequence_ipv4", []string{"3a32a653151290b7193ecb78e5a49b3434db875c150129af76eceb5055c0964f", "c23ec04cf936955b7ae6d767dc30ed844ba143c30721a2609d65e2eef3ca0eba", "643172447cc44f8905e3f64b543470b48f524b2ab5f821e636558bc3c958726d"}},
+	{"process_v6.yaml", "sequence_ipv6", []string{"8462171883a7332e0ad269b6bc3ee957adbd6b349ea5dafa818d247e7bac58be", "96126ec025dd0ed38339222c38afbb29560133dc4646b32efba43eb84c98f7e1", "5e5883fe7108e55b0a23d5b0f4f7b2f1024890bf9e1b0486dddb549ee03a9ac4"}},
+	{"not_in_list_ipmatch.yaml", "sequence_not_in_list_ipmatch", []string{"b0f0d5fc3ce3e33623d162a15421ed4c6b39a208760d483eef711aadeac6da13", "7e4df547512c60e188961c3d136d653c73b8e3f356fe2e013cb950c1d906529e"}},
+	{"not_in_list_noleak_v4.yaml", "sequence_not_in_list_noleak_v4", []string{"f6cad30b30e1c05040f7f697807a932bac4a27f776becd39a3ef236f279e7412", "4f83618d83d4b2481e381ac4eeef9847182a05fa2f3f168f41b52fe0e50370e2", "59805e23a6b8bdf0f64aba49fd0f89ecf369f5e68d9715674d1a7af772879847"}},
+	{"not_in_list_noleak_v6.yaml", "sequence_not_in_list_noleak_v6", []string{"14fe9049a86cfa9e53dfb477715e3c5057a5cce09c8d53bb6ca938c88699723c", "1a3c31abaf061c5811546c9d13ce62ce0a5d16ffbdb44f7fc6ac99cac3a14cf6", "102eedfd6eca294f3c5a3d4e875a486188975f02933097e3cd11d0cee9edd8ec"}},
+	{"forward_1.yaml", "sequence_fakeip_addlist", []string{"42f5c39afe7a51c00153ae095d6e32ba7952e84ae89238fad51dceb14af6be58", "8bd389444ea3ab0dbb3ccb19c09bf48fdb79955ce9c53a39331844d272e84a37"}},
 }
 
 func mosDNSYAMLField(node *yaml.Node, name string) *yaml.Node {
@@ -73,7 +74,7 @@ func mosDNSSequenceFingerprint(args *yaml.Node) (string, error) {
 	return fmt.Sprintf("%x", sha256.Sum256(encoded)), nil
 }
 
-func migrateMosDNSLearningSequence(current, template, tag string, legacy [2]string) (next string, custom bool, err error) {
+func migrateMosDNSLearningSequence(current, template, tag string, legacy []string) (next string, custom bool, err error) {
 	var doc, wanted yaml.Node
 	if err := yaml.Unmarshal([]byte(current), &doc); err != nil {
 		return current, true, nil
@@ -99,20 +100,78 @@ func migrateMosDNSLearningSequence(current, template, tag string, legacy [2]stri
 	if hash == wantHash {
 		return current, false, nil
 	}
-	if hash != legacy[0] && hash != legacy[1] {
+	if !slices.Contains(legacy, hash) {
 		return current, true, nil
 	}
 	*args = *newArgs
+	next, err = encodeMosDNSMigrationYAML(&doc)
+	return next, false, err
+}
+
+func encodeMosDNSMigrationYAML(doc *yaml.Node) (string, error) {
 	var out bytes.Buffer
 	encoder := yaml.NewEncoder(&out)
 	encoder.SetIndent(2)
-	if err := encoder.Encode(&doc); err != nil {
-		return "", false, err
+	if err := encoder.Encode(doc); err != nil {
+		return "", err
 	}
 	if err := encoder.Close(); err != nil {
-		return "", false, err
+		return "", err
 	}
-	return out.String(), false, nil
+	return out.String(), nil
+}
+
+// Main configs contain rendered IPv6/client settings; patch only the known
+// generated no-address gates. Cache settings likewise retain operator sizes,
+// exclusions and paths while the strict front cache stops serving stale data.
+func migrateMosDNSStrictPolicy(content string, cache bool) (string, error) {
+	var doc yaml.Node
+	if err := yaml.Unmarshal([]byte(content), &doc); err != nil {
+		return content, nil
+	}
+	changed := false
+	if cache {
+		plugins := mosDNSYAMLField(&doc, "plugins")
+		if plugins == nil || plugins.Kind != yaml.SequenceNode {
+			return content, nil
+		}
+		for _, plugin := range plugins.Content {
+			tag, typ := mosDNSYAMLField(plugin, "tag"), mosDNSYAMLField(plugin, "type")
+			if tag == nil || tag.Value != mosDNSCacheAllNoLeakTag || typ == nil || typ.Value != "cache" {
+				continue
+			}
+			lazy := mosDNSYAMLField(mosDNSYAMLField(plugin, "args"), "lazy_cache_ttl")
+			if lazy != nil && lazy.Kind == yaml.ScalarNode && lazy.Value != "0" {
+				lazy.Value, lazy.Tag = "0", "!!int"
+				changed = true
+			}
+		}
+	} else {
+		for _, tag := range []string{"sequence_6666", "sequence_requery"} {
+			args := mosDNSSequenceArgs(&doc, tag)
+			if args == nil || args.Kind != yaml.SequenceNode {
+				continue
+			}
+			for _, rule := range args.Content {
+				action, matches := mosDNSYAMLField(rule, "exec"), mosDNSYAMLField(rule, "matches")
+				if action == nil || action.Value != "reject 0" || matches == nil || matches.Kind != yaml.SequenceNode || len(matches.Content) != 3 {
+					continue
+				}
+				values := map[string]bool{}
+				for _, match := range matches.Content {
+					values[match.Value] = true
+				}
+				if values["switch1 'A'"] && ((values["qtype 1"] && values["fast_mark 2"]) || (values["qtype 28"] && values["fast_mark 3"])) {
+					matches.Content = append(matches.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "switch3 'A'"})
+					changed = true
+				}
+			}
+		}
+	}
+	if !changed {
+		return content, nil
+	}
+	return encodeMosDNSMigrationYAML(&doc)
 }
 
 func (a *App) ensureMosDNSLearningSafety() error {
@@ -144,6 +203,19 @@ func (a *App) ensureMosDNSLearningSafety() error {
 			files["configs/"+rel] = next
 		}
 	}
+	for _, rel := range []string{"configs/mosdns/config.yaml", "configs/mosdns/sub_config/cache.yaml"} {
+		current, err := a.readTextFile(rel)
+		if err != nil {
+			return err
+		}
+		next, err := migrateMosDNSStrictPolicy(current, rel == "configs/mosdns/sub_config/cache.yaml")
+		if err != nil {
+			return err
+		}
+		if next != current {
+			files[rel] = next
+		}
+	}
 	// Only an actual upgrade invalidates old learning/caches. Retrying a marker
 	// write after a successful migration must not discard newly learned state.
 	if len(files) > 0 {
@@ -158,5 +230,5 @@ func (a *App) ensureMosDNSLearningSafety() error {
 			return err
 		}
 	}
-	return os.WriteFile(marker, []byte("3\n"), 0644)
+	return os.WriteFile(marker, []byte("4\n"), 0644)
 }

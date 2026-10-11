@@ -55,11 +55,13 @@ plugins:
       - matches:                            #屏蔽没有v4地址的域名
         - qtype 1
         - switch1 'A'
+        - switch3 'A'                      # 安全模式不采用永久无地址记忆
         - fast_mark 2
         exec: reject 0
       - matches:                            #屏蔽没有v6地址的域名
         - qtype 28
         - switch1 'A'
+        - switch3 'A'                      # 安全模式不采用永久无地址记忆
         - fast_mark 3
         exec: reject 0
       - matches:                            #屏蔽pcdn v4
@@ -164,11 +166,13 @@ plugins:
       - matches:                            #屏蔽没有v4地址的域名
         - qtype 1
         - switch1 'A'
+        - switch3 'A'                      # 安全模式不采用永久无地址记忆
         - fast_mark 2
         exec: reject 0
       - matches:                            #屏蔽没有v6地址的域名
         - qtype 28
         - switch1 'A'
+        - switch3 'A'                      # 安全模式不采用永久无地址记忆
         - fast_mark 3
         exec: reject 0
       - matches:                            #屏蔽pcdn v4
