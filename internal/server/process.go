@@ -1,7 +1,7 @@
 package server
 
 import (
-	"bytes"
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -549,56 +549,22 @@ func tailFileSince(path string, offset int64, maxLines int) ([]string, error) {
 		return nil, err
 	}
 	defer f.Close()
-	info, err := f.Stat()
-	if err != nil {
-		return nil, err
-	}
-	if offset > info.Size() {
+	if info, statErr := f.Stat(); statErr == nil && offset > info.Size() {
 		offset = 0
 	}
-	if offset < 0 {
-		return nil, fmt.Errorf("negative log offset: %d", offset)
+	if _, err := f.Seek(offset, io.SeekStart); err != nil {
+		return nil, err
 	}
-	return readLogTail(f, offset, info.Size(), maxLines)
-}
-
-// readLogTail reads only the blocks needed for the requested tail. size is a
-// snapshot: concurrent appends are picked up by the next read.
-func readLogTail(r io.ReaderAt, offset, size int64, maxLines int) ([]string, error) {
-	if maxLines <= 0 || size <= offset {
-		return []string{}, nil
-	}
-	const blockSize = 32 * 1024
-	var blocks [][]byte
-	newlines := 0
-	for end := size; end > offset && newlines <= maxLines; {
-		start := max(offset, end-blockSize)
-		block := make([]byte, end-start)
-		n, err := r.ReadAt(block, start)
-		if err != nil {
-			// A concurrent truncation invalidates this snapshot. Do not return
-			// a mixture of the old tail and the newly truncated file.
-			return nil, err
+	scanner := bufio.NewScanner(f)
+	buf := make([]string, 0, maxLines)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if len(buf) == maxLines {
+			copy(buf, buf[1:])
+			buf[maxLines-1] = line
+		} else {
+			buf = append(buf, line)
 		}
-		block = block[:n]
-		blocks = append(blocks, block)
-		newlines += bytes.Count(block, []byte{'\n'})
-		end = start
 	}
-	var data []byte
-	for i := len(blocks) - 1; i >= 0; i-- {
-		data = append(data, blocks[i]...)
-	}
-	parts := bytes.Split(data, []byte{'\n'})
-	if len(parts[len(parts)-1]) == 0 {
-		parts = parts[:len(parts)-1]
-	}
-	if len(parts) > maxLines {
-		parts = parts[len(parts)-maxLines:]
-	}
-	lines := make([]string, len(parts))
-	for i, line := range parts {
-		lines[i] = string(bytes.TrimSuffix(line, []byte{'\r'}))
-	}
-	return lines, nil
+	return buf, scanner.Err()
 }
