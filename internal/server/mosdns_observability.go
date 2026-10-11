@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/netip"
 	"regexp"
 	"sort"
 	"strconv"
@@ -146,7 +147,7 @@ func normalizeMosDNSQueryMap(obj map[string]any, index int, raw string) map[stri
 		domainSet = "unmatched_rule"
 	}
 	if responseCode == "" {
-		responseCode = "NOERROR"
+		responseCode = "UNKNOWN"
 	}
 	queryTime := firstString(obj, "query_time", "time", "timestamp", "created_at")
 	if queryTime == "" {
@@ -240,7 +241,7 @@ func parseMosDNSQueryLine(line string, index int) (map[string]any, bool) {
 		domainSet = "unmatched_rule"
 	}
 	if responseCode == "" {
-		responseCode = "NOERROR"
+		responseCode = "UNKNOWN"
 	}
 	queryTime := time.Now().Add(time.Duration(index) * -time.Second).Format(time.RFC3339)
 	return map[string]any{
@@ -328,7 +329,8 @@ func mosDNSQueryMeta(entries []map[string]any) map[string]any {
 	}
 }
 
-func mosDNSAuditStats(entries []map[string]any) map[string]any {
+func (a *App) mosDNSAuditStats(entries []map[string]any) map[string]any {
+	prefixes := a.mosDNSConfiguredFakeIPPrefixes()
 	blocked := 0
 	fakeIP := 0
 	totalDuration := 0.0
@@ -338,7 +340,7 @@ func mosDNSAuditStats(entries []map[string]any) map[string]any {
 		if strings.Contains(rule, "ban") || strings.Contains(rule, "block") || strings.Contains(rule, "ad") || resp == "NXDOMAIN" || resp == "REFUSED" {
 			blocked++
 		}
-		if entryHasFakeIP(entry) {
+		if entryHasFakeIP(entry, prefixes) {
 			fakeIP++
 		}
 		totalDuration += numericMapValue(entry, "duration_ms")
@@ -398,7 +400,7 @@ func mosDNSCacheRows(entries []map[string]any) []map[string]any {
 		if name == "" || seen[name] {
 			continue
 		}
-		if len(anySlice(entry["answers"])) == 0 && !entryHasFakeIP(entry) {
+		if len(anySlice(entry["answers"])) == 0 {
 			continue
 		}
 		seen[name] = true
@@ -416,15 +418,16 @@ func mosDNSCacheRows(entries []map[string]any) []map[string]any {
 	return rows
 }
 
-func mosDNSUpstreamStats(entries []map[string]any) map[string]any {
+func (a *App) mosDNSUpstreamStats(entries []map[string]any) map[string]any {
+	prefixes := a.mosDNSConfiguredFakeIPPrefixes()
 	groups := []struct {
 		Name string
 		Want func(map[string]any) bool
 	}{
-		{"fakeip", func(e map[string]any) bool { return entryHasFakeIP(e) }},
+		{"fakeip", func(e map[string]any) bool { return entryHasFakeIP(e, prefixes) }},
 		{"direct", func(e map[string]any) bool {
 			rule := strings.ToLower(stringMapValue(e, "domain_set"))
-			return !entryHasFakeIP(e) && (strings.Contains(rule, "white") || strings.Contains(rule, "direct") || strings.Contains(rule, "unmatched") || rule == "")
+			return !entryHasFakeIP(e, prefixes) && (strings.Contains(rule, "white") || strings.Contains(rule, "direct") || strings.Contains(rule, "unmatched") || rule == "")
 		}},
 		{"blocked", func(e map[string]any) bool {
 			rule := strings.ToLower(stringMapValue(e, "domain_set"))
@@ -644,14 +647,18 @@ func uniqueValues(entries []map[string]any, key string, limit int) []string {
 	return out
 }
 
-func entryHasFakeIP(entry map[string]any) bool {
-	for _, ans := range anySlice(entry["answers"]) {
-		if strings.Contains(fmt.Sprint(ans), "28.") || strings.Contains(fmt.Sprint(ans), "f2b0:") {
+func (a *App) mosDNSConfiguredFakeIPPrefixes() []netip.Prefix {
+	cfg, _ := a.latestSetupConfig()
+	return mosDNSFakeIPPrefixes(cfg)
+}
+
+func entryHasFakeIP(entry map[string]any, prefixes []netip.Prefix) bool {
+	for _, ip := range mosDNSAnswerIPs(entry) {
+		if mosDNSIsFakeIP(ip, prefixes) {
 			return true
 		}
 	}
-	rule := strings.ToLower(stringMapValue(entry, "domain_set"))
-	return strings.Contains(rule, "fakeip") || strings.Contains(rule, "greylist")
+	return false
 }
 
 func maxInt(a, b int) int {

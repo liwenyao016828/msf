@@ -333,7 +333,7 @@ func (a *App) replaceGeneratedConfigFiles(files map[string]string, remove []stri
 			snapshots = append(snapshots, snapshot)
 			return err
 		}
-		if err := tmp.Chmod(0o644); err != nil {
+		if err := tmp.Chmod(snapshot.Mode); err != nil {
 			_ = tmp.Close()
 			snapshots = append(snapshots, snapshot)
 			return err

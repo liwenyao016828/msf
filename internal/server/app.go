@@ -54,6 +54,9 @@ type App struct {
 	monitorMu               sync.Mutex
 	monitorNetworkLast      monitorNetworkSample
 	monitorNetworkCache     map[string]any
+	logSnapshotMu           sync.Mutex
+	logSnapshotEpoch        string
+	logSnapshotRevision     uint64
 	appLogMu                sync.Mutex
 	mihomoTrafficMu         sync.Mutex
 	mihomoTrafficCache      map[string]any
@@ -203,6 +206,9 @@ func (a *App) EnsureBaseLayout() error {
 		return err
 	}
 	if err := a.ensureMosDNSCacheSafety(); err != nil {
+		return err
+	}
+	if err := a.ensureMosDNSLearningSafety(); err != nil {
 		return err
 	}
 	if err := cloudflareredirect.EnsureDefaultConfig(a.DataDir); err != nil {

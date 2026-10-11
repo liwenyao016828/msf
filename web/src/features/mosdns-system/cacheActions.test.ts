@@ -16,7 +16,8 @@ describe("MosDNS cache actions", () => {
 
   it("uses explicit confirmation copy and disables repeated actions", () => {
     expect(page).toContain("不会删除手工规则、订阅、配置或 Mihomo Fake-IP 数据库");
-    expect(page).toContain("不会清理 DNS 缓存");
+    expect(page).toContain("及相关 DNS 缓存");
+    expect(page).toContain("运行中的 MosDNS 会短暂重启");
     expect(section).toContain("disabled={disabled}");
     expect(dashboard).toContain("data.clearDNSCache()");
     expect(dashboard).toContain('data.runCacheAction("clear")');

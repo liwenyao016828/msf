@@ -694,7 +694,8 @@ export default function MosdnsSystemPage() {
 
   const runRoutingAction = async (path: "start" | "save" | "clear", message: string) => {
     try {
-      await api(`/api/v1/mosdns/system/routing/${path}`, { method: "POST" });
+      const payload = await api<{ success?: boolean; error?: string }>(`/api/v1/mosdns/system/routing/${path}`, { method: "POST" });
+      if (payload?.success === false) throw new Error(payload.error || "分流记忆操作失败");
       const record = `${new Date().toLocaleString("zh-CN", { hour12: false })} ${message}`;
       setTaskEvents((current) => [...current.slice(-7), record]);
       showToast(message);
@@ -725,10 +726,21 @@ export default function MosdnsSystemPage() {
 
   const clearGeneratedRules = async () => {
     if (cacheActionSaving) return;
-    if (!window.confirm("确定清空自动生成的分流规则吗？\n\n将清空 FakeIP、RealIP 和高频域名生成文件，不会清理 DNS 缓存。")) return;
+    if (!window.confirm("确定清空自动生成的分流规则吗？\n\n将清空 FakeIP、RealIP 和高频域名生成文件及相关 DNS 缓存。运行中的 MosDNS 会短暂重启，完成后自动恢复。手工规则、订阅、上游配置和 Mihomo Fake-IP 数据库会保留。")) return;
     setCacheActionSaving(true);
     try {
       await runRoutingAction("clear", "生成规则已清空");
+    } finally {
+      setCacheActionSaving(false);
+    }
+  };
+
+  const rebuildRoutingMemory = async () => {
+    if (cacheActionSaving) return;
+    if (!window.confirm("确定重建分流记忆吗？\n\n将根据成功的查询记录重建分流规则并清理相关 DNS 缓存。运行中的 MosDNS 会短暂重启，完成后自动恢复。手工规则、订阅和上游配置会保留。")) return;
+    setCacheActionSaving(true);
+    try {
+      await runRoutingAction("start", "分流记忆已重建");
     } finally {
       setCacheActionSaving(false);
     }
@@ -825,7 +837,7 @@ export default function MosdnsSystemPage() {
             onToggleCache2={() => void toggleCacheStrategy("expiredCache2")}
             onChangeTask={(task: ScheduledTask) => setCacheData((prev) => ({ ...prev, scheduledTask: task }))}
             onSaveTask={saveScheduler}
-            onHotReload={() => void runRoutingAction("start", "热更新已启动")}
+            onHotReload={() => void rebuildRoutingMemory()}
             onSaveRules={() => void runRoutingAction("save", "规则已保存")}
             onClearDNSCache={() => void clearDNSCache()}
             onClearGeneratedRules={() => void clearGeneratedRules()}

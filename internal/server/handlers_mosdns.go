@@ -927,7 +927,7 @@ func (a *App) handleMosDNSAuditRank(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleMosDNSAuditStats(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"success": true, "data": mosDNSAuditStats(a.mosDNSQueryDataset(5000))})
+	writeJSON(w, http.StatusOK, map[string]any{"success": true, "data": a.mosDNSAuditStats(a.mosDNSQueryDataset(5000))})
 }
 
 func (a *App) handleMosDNSCacheDetailed(w http.ResponseWriter, r *http.Request) {
@@ -974,7 +974,7 @@ func (a *App) handleMosDNSCacheDetailed(w http.ResponseWriter, r *http.Request) 
 }
 
 func (a *App) handleMosDNSUpstreamStats(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"success": true, "data": mosDNSUpstreamStats(a.mosDNSQueryDataset(5000))})
+	writeJSON(w, http.StatusOK, map[string]any{"success": true, "data": a.mosDNSUpstreamStats(a.mosDNSQueryDataset(5000))})
 }
 
 func (a *App) handleMosDNSRoutingTask(w http.ResponseWriter, r *http.Request) {
@@ -1339,7 +1339,9 @@ func (a *App) handleMosDNSOverridesPut(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleMosDNSRoutingStart(w http.ResponseWriter, r *http.Request) {
-	state, err := a.generateMosDNSRoutingRules()
+	a.configApplyMu.Lock()
+	defer a.configApplyMu.Unlock()
+	state, err := a.generateMosDNSRoutingRules(r.Context())
 	if err != nil {
 		writeJSON(w, http.StatusOK, map[string]any{"success": false, "error": err.Error(), "data": state})
 		return
@@ -1355,8 +1357,15 @@ func (a *App) handleMosDNSRoutingSave(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleMosDNSRoutingClear(w http.ResponseWriter, r *http.Request) {
+	a.configApplyMu.Lock()
+	defer a.configApplyMu.Unlock()
+	files := map[string][]string{}
 	for _, name := range []string{"fakeiprule.txt", "fakeiplist.txt", "realiprule.txt", "realiplist.txt", "top_domains.txt"} {
-		_ = a.writeTextFile(filepath.ToSlash(filepath.Join("configs/mosdns/gen", name)), "")
+		files[name] = nil
+	}
+	if err := a.replaceMosDNSLearningFiles(r.Context(), files); err != nil {
+		writeError(w, http.StatusInternalServerError, "routing_clear_failed", err.Error())
+		return
 	}
 	state := defaultMosDNSRoutingState()
 	a.storeJSONSetting("mosdns_routing_task", state)
