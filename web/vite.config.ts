@@ -54,7 +54,7 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    include: ["src/features/**/*.test.ts", "src/components/dashboard/**/*.test.ts", "src/lib/**/*.test.ts", "src/app/settings/**/*.test.tsx", "src/pages/**/*.test.tsx"],
+    include: ["src/features/**/*.test.ts", "src/components/dashboard/**/*.test.ts", "src/components/assistant/**/*.test.ts", "src/lib/**/*.test.ts", "src/app/settings/**/*.test.tsx", "src/pages/**/*.test.tsx"],
     globals: false,
     passWithNoTests: true
   }

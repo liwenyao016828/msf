@@ -1,5 +1,7 @@
 export type AssistantExecutionMode = "read_only" | "confirm_writes" | "full_auto";
 
+export type OrbMode = "auto" | "dynamic" | "static";
+
 export interface AssistantSettings {
   enabled: boolean;
   provider: string;
@@ -13,11 +15,13 @@ export interface AssistantSettings {
   max_tool_rounds: number;
   show_tool_details: boolean;
   orb_enabled: boolean;
+  orb_mode: OrbMode;
 }
 
 export interface AssistantStatus {
   enabled: boolean;
   orb_enabled: boolean;
+  orb_mode: OrbMode;
   admin: boolean;
   catalog_ready: boolean;
   catalog_capabilities: number;

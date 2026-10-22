@@ -15,6 +15,29 @@ import (
 	"github.com/scoltzero/msf/internal/assistant"
 )
 
+// OrbMode controls how the AI floating orb is rendered.
+//
+//   - auto: probe device capability at runtime and degrade to a static orb on
+//     weak hardware or software rendering
+//   - dynamic: always start the WebGPU/WebGL renderer (can freeze weak devices)
+//   - static: never initialise the renderer; show the static CSS poster
+type OrbMode string
+
+const (
+	OrbModeAuto    OrbMode = "auto"
+	OrbModeDynamic OrbMode = "dynamic"
+	OrbModeStatic  OrbMode = "static"
+)
+
+func normalizeOrbMode(mode OrbMode) OrbMode {
+	switch mode {
+	case OrbModeDynamic, OrbModeStatic:
+		return mode
+	default:
+		return OrbModeAuto
+	}
+}
+
 type assistantSettings struct {
 	Enabled        bool
 	Provider       string
@@ -30,6 +53,7 @@ type assistantSettings struct {
 	ExecutionMode  assistant.ExecutionMode
 	ShowToolDetail bool
 	OrbEnabled     bool
+	OrbMode        OrbMode
 }
 
 type assistantSettingsPatch struct {
@@ -46,6 +70,7 @@ type assistantSettingsPatch struct {
 	ExecutionMode  *assistant.ExecutionMode `json:"execution_mode"`
 	ShowToolDetail *bool                    `json:"show_tool_details"`
 	OrbEnabled     *bool                    `json:"orb_enabled"`
+	OrbMode        *OrbMode                 `json:"orb_mode"`
 }
 
 func defaultAssistantSettings() assistantSettings {
@@ -59,16 +84,17 @@ func defaultAssistantSettings() assistantSettings {
 		ExecutionMode:  assistant.ExecutionConfirmWrites,
 		ShowToolDetail: true,
 		OrbEnabled:     true,
+		OrbMode:        OrbModeAuto,
 	}
 }
 
 func (a *App) getAssistantSettings() (assistantSettings, error) {
 	settings := defaultAssistantSettings()
-	row := a.DB.QueryRow(`select enabled,coalesce(provider,''),coalesce(base_url,''),api_key_ciphertext,api_key_nonce,coalesce(model,''),coalesce(protocol,''),coalesce(context_tokens,32000),coalesce(temperature,0.2),coalesce(request_timeout,60),coalesce(max_tool_rounds,8),coalesce(execution_mode,'confirm_writes'),coalesce(show_tool_details,true),coalesce(orb_enabled,true) from assistant_settings where id=1`)
+	row := a.DB.QueryRow(`select enabled,coalesce(provider,''),coalesce(base_url,''),api_key_ciphertext,api_key_nonce,coalesce(model,''),coalesce(protocol,''),coalesce(context_tokens,32000),coalesce(temperature,0.2),coalesce(request_timeout,60),coalesce(max_tool_rounds,8),coalesce(execution_mode,'confirm_writes'),coalesce(show_tool_details,true),coalesce(orb_enabled,true),coalesce(orb_mode,'auto') from assistant_settings where id=1`)
 	var enabled, showTools, orb bool
-	var provider, baseURL, model, protocol, executionMode string
+	var provider, baseURL, model, protocol, executionMode, orbMode string
 	var cipherText, nonce []byte
-	if err := row.Scan(&enabled, &provider, &baseURL, &cipherText, &nonce, &model, &protocol, &settings.ContextTokens, &settings.Temperature, &settings.RequestTimeout, &settings.MaxToolRounds, &executionMode, &showTools, &orb); err != nil {
+	if err := row.Scan(&enabled, &provider, &baseURL, &cipherText, &nonce, &model, &protocol, &settings.ContextTokens, &settings.Temperature, &settings.RequestTimeout, &settings.MaxToolRounds, &executionMode, &showTools, &orb, &orbMode); err != nil {
 		if errors.Is(err, os.ErrNotExist) || strings.Contains(err.Error(), "no rows") {
 			return settings, nil
 		}
@@ -82,6 +108,7 @@ func (a *App) getAssistantSettings() (assistantSettings, error) {
 	settings.ExecutionMode = assistant.ExecutionMode(executionMode)
 	settings.ShowToolDetail = showTools
 	settings.OrbEnabled = orb
+	settings.OrbMode = normalizeOrbMode(OrbMode(orbMode))
 	settings.APIKeySet = len(cipherText) > 0 && len(nonce) > 0
 	if settings.APIKeySet {
 		apiKey, decryptErr := a.decryptAssistantSecret(cipherText, nonce)
@@ -138,6 +165,9 @@ func (a *App) saveAssistantSettings(patch assistantSettingsPatch) (assistantSett
 	if patch.OrbEnabled != nil {
 		current.OrbEnabled = *patch.OrbEnabled
 	}
+	if patch.OrbMode != nil {
+		current.OrbMode = normalizeOrbMode(*patch.OrbMode)
+	}
 	if current.Provider == "" {
 		current.Provider = "openai_compatible"
 	}
@@ -155,7 +185,7 @@ func (a *App) saveAssistantSettings(patch assistantSettingsPatch) (assistantSett
 			return current, err
 		}
 	}
-	_, err = a.DB.Exec(`insert into assistant_settings(id,enabled,provider,base_url,api_key_ciphertext,api_key_nonce,model,protocol,context_tokens,temperature,request_timeout,max_tool_rounds,execution_mode,show_tool_details,orb_enabled,updated_at) values(1,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) on conflict(id) do update set enabled=excluded.enabled,provider=excluded.provider,base_url=excluded.base_url,api_key_ciphertext=excluded.api_key_ciphertext,api_key_nonce=excluded.api_key_nonce,model=excluded.model,protocol=excluded.protocol,context_tokens=excluded.context_tokens,temperature=excluded.temperature,request_timeout=excluded.request_timeout,max_tool_rounds=excluded.max_tool_rounds,execution_mode=excluded.execution_mode,show_tool_details=excluded.show_tool_details,orb_enabled=excluded.orb_enabled,updated_at=excluded.updated_at`, current.Enabled, current.Provider, current.BaseURL, encrypted, nonce, current.Model, current.Protocol, current.ContextTokens, current.Temperature, current.RequestTimeout, current.MaxToolRounds, current.ExecutionMode, current.ShowToolDetail, current.OrbEnabled, time.Now())
+	_, err = a.DB.Exec(`insert into assistant_settings(id,enabled,provider,base_url,api_key_ciphertext,api_key_nonce,model,protocol,context_tokens,temperature,request_timeout,max_tool_rounds,execution_mode,show_tool_details,orb_enabled,orb_mode,updated_at) values(1,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) on conflict(id) do update set enabled=excluded.enabled,provider=excluded.provider,base_url=excluded.base_url,api_key_ciphertext=excluded.api_key_ciphertext,api_key_nonce=excluded.api_key_nonce,model=excluded.model,protocol=excluded.protocol,context_tokens=excluded.context_tokens,temperature=excluded.temperature,request_timeout=excluded.request_timeout,max_tool_rounds=excluded.max_tool_rounds,execution_mode=excluded.execution_mode,show_tool_details=excluded.show_tool_details,orb_enabled=excluded.orb_enabled,orb_mode=excluded.orb_mode,updated_at=excluded.updated_at`, current.Enabled, current.Provider, current.BaseURL, encrypted, nonce, current.Model, current.Protocol, current.ContextTokens, current.Temperature, current.RequestTimeout, current.MaxToolRounds, current.ExecutionMode, current.ShowToolDetail, current.OrbEnabled, string(current.OrbMode), time.Now())
 	if err != nil {
 		return current, err
 	}
@@ -290,5 +320,6 @@ func assistantSettingsResponse(settings assistantSettings) map[string]any {
 		"max_tool_rounds":   settings.MaxToolRounds,
 		"show_tool_details": settings.ShowToolDetail,
 		"orb_enabled":       settings.OrbEnabled,
+		"orb_mode":          string(settings.OrbMode),
 	}
 }

@@ -3,7 +3,7 @@ import { Bot, CheckCircle2, KeyRound, Save, Sparkles, TestTube2 } from "lucide-r
 import { GlassSurface } from "@/components/liquid-glass/GlassSurface";
 import { GlassButton } from "@/components/liquid-glass/GlassButton";
 import { getAssistantSettings, testAssistantSettings, updateAssistantSettings } from "@/features/assistant/api";
-import type { AssistantSettings } from "@/features/assistant/types";
+import type { AssistantSettings, OrbMode } from "@/features/assistant/types";
 
 export function AssistantSettingsCard({ showToast }: { showToast: (message: string) => void }) {
   const [settings, setSettings] = useState<AssistantSettings | null>(null);
@@ -70,6 +70,10 @@ export function AssistantSettingsCard({ showToast }: { showToast: (message: stri
           <div className="relative"><KeyRound className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><input type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder={settings.api_key_set ? "已配置，留空表示不修改" : "输入 API Key"} className="gary-field h-9 w-full px-3 pl-9 text-sm text-foreground" /></div>
         </label>
         <label className="flex items-center gap-2 self-end pb-2 text-xs font-medium text-foreground md:col-span-2"><input type="checkbox" checked={settings.orb_enabled} onChange={(event) => update("orb_enabled", event.target.checked)} className="h-4 w-4 accent-primary" />显示玻璃球入口</label>
+        <label className="space-y-1.5 text-xs font-medium text-muted-foreground md:col-span-2">悬浮球模式
+          <select value={settings.orb_mode} onChange={(event) => update("orb_mode", event.target.value as OrbMode)} className="gary-field h-9 w-full px-2 text-sm text-foreground"><option value="auto">自动（按设备能力检测）</option><option value="dynamic">动态球（始终启用渲染）</option><option value="static">静态球（无 GPU，低功耗）</option></select>
+        </label>
+        <p className="text-[11px] leading-4 text-muted-foreground md:col-span-2">自动模式会检测 CPU 核心、内存与 GPU 渲染器：弱设备或软件渲染时自动降级为静态球，避免主线程长时间阻塞。</p>
       </div>
 
       <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-border/40 pt-4">

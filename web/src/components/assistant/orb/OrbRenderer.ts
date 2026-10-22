@@ -16,6 +16,13 @@ const stateStyles: Record<OrbRenderState, keyof typeof stylePresets> = {
 
 export type OrbRendererBackend = "webgpu" | "webgl2";
 
+export type OrbInitOptions = {
+  /** Abort a hung WebGPU adapter/device request (ms) and fall back to WebGL2. */
+  initTimeoutMs?: number;
+  /** Upper bound for rendered frames per second (0 disables the cap). */
+  targetFps?: number;
+};
+
 export class OrbRenderer {
   private params: OrbParams = { style: "siri", ...stylePresets.siri } as OrbParams;
   private cleanup: (() => void) | null = null;
@@ -24,7 +31,7 @@ export class OrbRenderer {
 
   constructor(private readonly canvas: HTMLCanvasElement) {}
 
-  init() {
+  init(options: OrbInitOptions = {}) {
     return new Promise<OrbRendererBackend>((resolve, reject) => {
       const startWebGL2 = () => {
         this.cleanup?.();
@@ -32,6 +39,7 @@ export class OrbRenderer {
           canvas: this.canvas,
           getParams: () => this.params,
           isPaused: () => this.paused,
+          targetFps: options.targetFps,
           onError: reject,
           onReady: () => resolve("webgl2"),
         });
@@ -40,6 +48,8 @@ export class OrbRenderer {
         canvas: this.canvas,
         getParams: () => this.params,
         isPaused: () => this.paused,
+        initTimeoutMs: options.initTimeoutMs,
+        targetFps: options.targetFps,
         onError: startWebGL2,
         onReady: () => resolve("webgpu"),
       });

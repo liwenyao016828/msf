@@ -20,6 +20,28 @@ if [ ! -x "${SRC_BIN}" ]; then
   exit 1
 fi
 
+# ── png resize helper ─────────────────────────────────────
+# fnOS expects square PNG icons. macOS has `sips`; Linux build hosts usually
+# only have ImageMagick or ffmpeg, so try every available backend instead of
+# silently shipping blank placeholder icons.
+resize_png() {
+  local src="$1" size="$2" dst="$3"
+  [ -s "${src}" ] || return 1
+  if command -v sips >/dev/null 2>&1; then
+    sips -z "${size}" "${size}" "${src}" --out "${dst}" >/dev/null 2>&1 && [ -s "${dst}" ] && return 0
+  fi
+  if command -v magick >/dev/null 2>&1; then
+    magick "${src}" -resize "${size}x${size}" "${dst}" >/dev/null 2>&1 && [ -s "${dst}" ] && return 0
+  fi
+  if command -v convert >/dev/null 2>&1; then
+    convert "${src}" -resize "${size}x${size}" "${dst}" >/dev/null 2>&1 && [ -s "${dst}" ] && return 0
+  fi
+  if command -v ffmpeg >/dev/null 2>&1; then
+    ffmpeg -hide_banner -loglevel error -y -i "${src}" -vf "scale=${size}:${size}:flags=lanczos" "${dst}" >/dev/null 2>&1 && [ -s "${dst}" ] && return 0
+  fi
+  return 1
+}
+
 # ── stage directory ───────────────────────────────────────
 STAGE="$(mktemp -d)"
 ICON_TMP=""
@@ -115,10 +137,10 @@ if [ -z "${ICON_SRC}" ]; then
   done
 fi
 
-# 3. resize with sips if we have a PNG source
-if [ -n "${ICON_SRC}" ] && command -v sips >/dev/null 2>&1; then
-  sips -z 64  64  "${ICON_SRC}" --out "${STAGE}/ICON.PNG"      >/dev/null 2>&1 || true
-  sips -z 256 256 "${ICON_SRC}" --out "${STAGE}/ICON_256.PNG"  >/dev/null 2>&1 || true
+# 3. resize with any available image tool (sips / ImageMagick / ffmpeg)
+if [ -n "${ICON_SRC}" ]; then
+  resize_png "${ICON_SRC}" 64  "${STAGE}/ICON.PNG"     || true
+  resize_png "${ICON_SRC}" 256 "${STAGE}/ICON_256.PNG" || true
 fi
 
 # 4. fallback to minimal placeholder PNGs
@@ -155,8 +177,8 @@ UICONF
 mkdir -p "${STAGE}/app/ui/images"
 cp "${STAGE}/ICON_256.PNG" "${STAGE}/app/ui/images/256.png"
 cp "${STAGE}/ICON.PNG"     "${STAGE}/app/ui/images/64.png"
-sips -z 32 32  "${STAGE}/ICON_256.PNG" --out "${STAGE}/app/ui/images/32.png" >/dev/null 2>&1 || true
-sips -z 48 48  "${STAGE}/ICON_256.PNG" --out "${STAGE}/app/ui/images/48.png" >/dev/null 2>&1 || true
+resize_png "${STAGE}/ICON_256.PNG" 32 "${STAGE}/app/ui/images/32.png" || true
+resize_png "${STAGE}/ICON_256.PNG" 48 "${STAGE}/app/ui/images/48.png" || true
 [ -s "${STAGE}/app/ui/images/32.png" ] || cp "${STAGE}/ICON.PNG" "${STAGE}/app/ui/images/32.png"
 [ -s "${STAGE}/app/ui/images/48.png" ] || cp "${STAGE}/ICON.PNG" "${STAGE}/app/ui/images/48.png"
 

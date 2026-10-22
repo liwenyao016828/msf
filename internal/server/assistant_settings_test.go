@@ -56,6 +56,40 @@ func TestAssistantSettingsAreAdminOnlyAndDoNotReturnSecrets(t *testing.T) {
 	}
 }
 
+func TestAssistantOrbModePersistsAndNormalizesInvalidValues(t *testing.T) {
+	app := newTestApp(t)
+	admin := tokenForRole(t, app, "admin")
+
+	if stored, err := app.getAssistantSettings(); err != nil || stored.OrbMode != OrbModeAuto {
+		t.Fatalf("default orb mode should be auto, got %#v err=%v", stored.OrbMode, err)
+	}
+
+	patch := map[string]any{"orb_mode": "static"}
+	if response := requestJSON(t, app, http.MethodPut, "/api/v1/assistant/settings", admin, patch); response.Code != http.StatusOK {
+		t.Fatalf("orb_mode update status=%d body=%s", response.Code, response.Body.String())
+	}
+	stored, err := app.getAssistantSettings()
+	if err != nil || stored.OrbMode != OrbModeStatic {
+		t.Fatalf("orb_mode did not round-trip: %#v err=%v", stored.OrbMode, err)
+	}
+	// A legacy/unknown value must fall back to auto instead of being persisted.
+	if response := requestJSON(t, app, http.MethodPut, "/api/v1/assistant/settings", admin, map[string]any{"orb_mode": "turbo"}); response.Code != http.StatusOK {
+		t.Fatalf("invalid orb_mode update status=%d body=%s", response.Code, response.Body.String())
+	}
+	if stored, err := app.getAssistantSettings(); err != nil || stored.OrbMode != OrbModeAuto {
+		t.Fatalf("invalid orb_mode was not normalized to auto: %#v err=%v", stored.OrbMode, err)
+	}
+
+	// The status endpoint must expose the mode so the web UI can render it.
+	response := requestJSON(t, app, http.MethodGet, "/api/v1/assistant/status", admin, nil)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status status=%d", response.Code)
+	}
+	if !strings.Contains(response.Body.String(), `"orb_mode":"auto"`) {
+		t.Fatalf("status response did not include orb_mode: %s", response.Body.String())
+	}
+}
+
 func TestAssistantInternalDispatchReusesMSFAuthorization(t *testing.T) {
 	app := newTestApp(t)
 	adminToken := tokenForRole(t, app, "admin")

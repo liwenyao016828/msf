@@ -219,6 +219,7 @@ func (a *App) migrate() error {
 			execution_mode text default 'confirm_writes',
 			show_tool_details numeric default true,
 			orb_enabled numeric default true,
+			orb_mode text default 'auto',
 			updated_at datetime
 		)`,
 		`create table if not exists assistant_sessions (
@@ -329,6 +330,9 @@ func (a *App) migrate() error {
 	if err := a.ensureAssistantRuntimeColumns(); err != nil {
 		return err
 	}
+	if err := a.ensureAssistantOrbModeColumn(); err != nil {
+		return err
+	}
 	if err := a.normalizePersistedRows(); err != nil {
 		return err
 	}
@@ -368,6 +372,12 @@ func (a *App) ensureAssistantRuntimeColumns() error {
 		"execution_mode": "text default 'confirm_writes'",
 		"decision":       "text",
 		"decided_at":     "datetime",
+	})
+}
+
+func (a *App) ensureAssistantOrbModeColumn() error {
+	return a.ensureTableColumns("assistant_settings", map[string]string{
+		"orb_mode": "text default 'auto'",
 	})
 }
 

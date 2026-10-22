@@ -1,25 +1,18 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { cn } from "@/lib/utils";
 import { OrbRenderer, type OrbRendererBackend, type OrbRenderState } from "./OrbRenderer";
+import { resolveOrbMode, type OrbMode } from "./orb-capability";
 import "./assistant-orb.css";
 
 interface AssistantOrbProps {
   state?: OrbRenderState;
   onClick?: () => void;
   disabled?: boolean;
+  /** Server-persisted preference; auto still probes the device at runtime. */
+  mode?: OrbMode;
 }
 
-/** True when MSF runs inside a host desktop iframe, where GPU adapters may hang. */
-function isEmbedded(): boolean {
-  try {
-    return window.self !== window.top;
-  } catch {
-    // Cross-origin parent -> definitely embedded.
-    return true;
-  }
-}
-
-export function AssistantOrb({ state = "idle", onClick, disabled = false }: AssistantOrbProps) {
+export function AssistantOrb({ state = "idle", onClick, disabled = false, mode = "auto" }: AssistantOrbProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const rendererRef = useRef<OrbRenderer | null>(null);
   const orbRef = useRef<HTMLButtonElement | null>(null);
@@ -28,6 +21,15 @@ export function AssistantOrb({ state = "idle", onClick, disabled = false }: Assi
   const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
   const [dockedSide, setDockedSide] = useState<"left" | "right" | null>(null);
   const [rendererBackend, setRendererBackend] = useState<OrbRendererBackend | null>(null);
+
+  // Probe once at mount and whenever the server preference changes. The
+  // weak-device check creates a small WebGL context, so it must not run on
+  // every render; a lazy state initializer keeps it out of the render phase.
+  const [capability, setCapability] = useState(() => resolveOrbMode(mode));
+  useEffect(() => {
+    setCapability(resolveOrbMode(mode));
+  }, [mode]);
+  const staticOrb = capability.mode === "static";
 
   const getBounds = () => {
     const size = 72;
@@ -72,14 +74,9 @@ export function AssistantOrb({ state = "idle", onClick, disabled = false }: Assi
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || disabled) return;
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      setRendererBackend(null);
-      return;
-    }
-    // When MSF is embedded in a host desktop (iframe), the WebGPU adapter request
-    // can hang without resolving or rejecting, which freezes the whole page.
-    // Use the static poster canvas in that case and skip GPU initialisation.
-    if (window.self !== window.top) {
+    // Degraded/static path: skip GPU init entirely so a weak device or an
+    // embedded host iframe can never freeze the page behind the orb.
+    if (staticOrb) {
       setRendererBackend(null);
       return;
     }
@@ -90,7 +87,9 @@ export function AssistantOrb({ state = "idle", onClick, disabled = false }: Assi
     observer.observe(canvas);
     const handleVisibility = () => renderer.setPaused(document.visibilityState !== "visible");
     document.addEventListener("visibilitychange", handleVisibility);
-    renderer.init().then((backend) => {
+    // Cap the frame rate and bound the WebGPU adapter request so a hung GPU
+    // init falls back to WebGL2 instead of blocking first paint forever.
+    renderer.init({ targetFps: 30, initTimeoutMs: 2000 }).then((backend) => {
       if (!disposed) setRendererBackend(backend);
     }).catch(() => {
       if (!disposed) setRendererBackend(null);
@@ -102,7 +101,7 @@ export function AssistantOrb({ state = "idle", onClick, disabled = false }: Assi
       renderer.destroy();
       rendererRef.current = null;
     };
-  }, [disabled]);
+  }, [disabled, staticOrb]);
 
   useEffect(() => {
     rendererRef.current?.setState(state);
@@ -183,7 +182,7 @@ export function AssistantOrb({ state = "idle", onClick, disabled = false }: Assi
     <button
       type="button"
       ref={orbRef}
-      className={cn("assistant-orb", `assistant-orb--${state}`, rendererBackend ? "assistant-orb--rendered" : "assistant-orb--fallback", position && "assistant-orb--positioned", dockedSide && `assistant-orb--docked-${dockedSide}`, isEmbedded() && "assistant-orb--static")}
+      className={cn("assistant-orb", `assistant-orb--${state}`, rendererBackend ? "assistant-orb--rendered" : "assistant-orb--fallback", position && "assistant-orb--positioned", dockedSide && `assistant-orb--docked-${dockedSide}`, staticOrb && "assistant-orb--static")}
       data-renderer={rendererBackend || "fallback"}
       style={position ? { left: `${position.x}px`, top: `${position.y}px` } : undefined}
       onClick={handleClick}

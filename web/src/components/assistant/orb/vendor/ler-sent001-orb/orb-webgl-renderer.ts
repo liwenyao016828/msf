@@ -9,6 +9,8 @@ export type OrbWebGLRendererOptions = {
   isPaused?: () => boolean;
   onError: (error: Error) => void;
   onReady: () => void;
+  /** Upper bound for rendered frames per second (0 disables the cap). */
+  targetFps?: number;
 };
 
 function compileShader(gl: WebGL2RenderingContext, type: number, source: string): WebGLShader {
@@ -30,6 +32,7 @@ export function createOrbWebGLRenderer({
   isPaused = () => false,
   onError,
   onReady,
+  targetFps = 30,
 }: OrbWebGLRendererOptions): () => void {
   let disposed = false;
   let animationFrame = 0;
@@ -89,6 +92,8 @@ export function createOrbWebGLRenderer({
 
     const values = new Float32Array(128);
     const startedAt = performance.now();
+    const frameInterval = targetFps > 0 ? 1000 / targetFps : 0;
+    let lastFrameAt = 0;
 
     function resize(): void {
       if (!gl) return;
@@ -106,6 +111,13 @@ export function createOrbWebGLRenderer({
       if (disposed || failed || !gl || !program || !uniformBuffer || !vertexArray) return;
       try {
         if (!isPaused()) {
+          // Cap the render rate to keep the heavy fragment shader cheap. The
+          // rAF chain keeps running so the orb resumes instantly when visible.
+          if (frameInterval > 0 && now - lastFrameAt < frameInterval) {
+            animationFrame = requestAnimationFrame(frame);
+            return;
+          }
+          lastFrameAt = now;
           resize();
           writeOrbUniforms(values, canvas.width, canvas.height, (now - startedAt) / 1000, getParams());
           gl.bindBuffer(gl.UNIFORM_BUFFER, uniformBuffer);

@@ -80,6 +80,7 @@ func (a *App) handleAssistantStatus(w http.ResponseWriter, r *http.Request) {
 		"data": map[string]any{
 			"enabled":         settings.Enabled,
 			"orb_enabled":     settings.OrbEnabled,
+			"orb_mode":        string(settings.OrbMode),
 			"admin":           user.Role == "admin",
 			"runtime":         assistantRuntimeName,
 			"runtime_version": assistantRuntimeVersion,

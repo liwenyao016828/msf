@@ -8,6 +8,10 @@ export type OrbRendererOptions = {
   isPaused?: () => boolean;
   onError: (error: Error) => void;
   onReady: () => void;
+  /** Abort a hung WebGPU adapter/device request and fall back to WebGL2. */
+  initTimeoutMs?: number;
+  /** Upper bound for rendered frames per second (0 disables the cap). */
+  targetFps?: number;
 };
 
 export function createOrbRenderer({
@@ -16,6 +20,8 @@ export function createOrbRenderer({
   isPaused = () => false,
   onError,
   onReady,
+  initTimeoutMs = 2000,
+  targetFps = 30,
 }: OrbRendererOptions): () => void {
   let disposed = false;
   let animationFrame = 0;
@@ -31,17 +37,33 @@ export function createOrbRenderer({
     onError(error);
   }
 
+  function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(`${label}超时（${timeoutMs}ms）`)), timeoutMs);
+      promise.then(
+        (value) => {
+          clearTimeout(timer);
+          resolve(value);
+        },
+        (error) => {
+          clearTimeout(timer);
+          reject(error);
+        },
+      );
+    });
+  }
+
   async function start(): Promise<void> {
     if (!navigator.gpu) {
       throw new Error("当前浏览器不支持 WebGPU");
     }
 
-    const adapter = await navigator.gpu.requestAdapter();
+    const adapter = await withTimeout(navigator.gpu.requestAdapter(), initTimeoutMs, "WebGPU 适配器请求");
     if (!adapter) {
       throw new Error("未找到可用的 WebGPU 适配器");
     }
 
-    device = await adapter.requestDevice();
+    device = await withTimeout(adapter.requestDevice(), initTimeoutMs, "WebGPU 设备创建");
     if (disposed) {
       device.destroy();
       return;
@@ -93,6 +115,8 @@ export function createOrbRenderer({
       entries: [{ binding: 0, resource: { buffer: uniformBuffer } }],
     });
     const startedAt = performance.now();
+    const frameInterval = targetFps > 0 ? 1000 / targetFps : 0;
+    let lastFrameAt = 0;
 
     device.lost.then((info) => {
       fail(new Error(`WebGPU 设备已断开：${info.message || info.reason}`));
@@ -123,6 +147,14 @@ export function createOrbRenderer({
           animationFrame = requestAnimationFrame(frame);
           return;
         }
+        // Cap the render rate: on a 60Hz panel every other frame is skipped, so
+        // the heavy shader costs half the CPU/GPU time. The rAF chain keeps
+        // running so the orb resumes immediately when the page becomes visible.
+        if (frameInterval > 0 && now - lastFrameAt < frameInterval) {
+          animationFrame = requestAnimationFrame(frame);
+          return;
+        }
+        lastFrameAt = now;
         resize();
         writeOrbUniforms(
           values,
