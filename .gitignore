@@ -1,4 +1,4 @@
-data/
+/data/
 dist/
 internal/server/web/dist/
 node_modules/
@@ -39,3 +39,6 @@ docs/research/components/login-logo-showcase.spec.md
 .zcode/
 /*.jpg
 web/pnpm-lock.yaml
+
+# DSH runtime metadata (workspace-local, never part of the project)
+.mnemon/
