@@ -21,6 +21,8 @@ export type OrbInitOptions = {
   initTimeoutMs?: number;
   /** Upper bound for rendered frames per second (0 disables the cap). */
   targetFps?: number;
+  /** The measured frame cost on this device is unusable; owner should degrade. */
+  onTooSlow?: (detail: string) => void;
 };
 
 export class OrbRenderer {
@@ -40,6 +42,7 @@ export class OrbRenderer {
           getParams: () => this.params,
           isPaused: () => this.paused,
           targetFps: options.targetFps,
+          onTooSlow: options.onTooSlow,
           onError: reject,
           onReady: () => resolve("webgl2"),
         });
@@ -50,6 +53,7 @@ export class OrbRenderer {
         isPaused: () => this.paused,
         initTimeoutMs: options.initTimeoutMs,
         targetFps: options.targetFps,
+        onTooSlow: options.onTooSlow,
         onError: startWebGL2,
         onReady: () => resolve("webgpu"),
       });

@@ -1771,10 +1771,26 @@ function AppearanceTab({ showToast }: { showToast: (message: string) => void }) 
         const backendTint = parseSkinTint(data.skin_tint);
         setSkinTint(backendTint === null ? "" : String(backendTint));
         applySkinTint(backendTint);
-        const storedScene = data.scene || localStorage.getItem("msf-glass-scene");
-        const nextScene: GlassSceneMode = storedScene === "static" || storedScene === "neutral" ? storedScene : "dynamic";
-        const storedQuality = data.quality || localStorage.getItem("msf-glass-quality");
-        const nextQuality: GlassQuality = storedQuality === "full" || storedQuality === "reduced" ? storedQuality : "balanced";
+        // Resolution order: this browser's explicit choice (localStorage) →
+        // this browser's capability-decided bootstrap (static/neutral set at
+        // startup for weak devices) → server value. The server answers
+        // "dynamic"/"balanced" whenever nobody ever chose, so trusting it over
+        // a weak-device bootstrap would re-enable the heavy WebGL scene here.
+        // Clicking a scene/quality tile persists an explicit local choice.
+        const localScene = localStorage.getItem("msf-glass-scene");
+        const bootstrapScene = document.documentElement.dataset.garyScene;
+        const nextScene: GlassSceneMode = localScene === "static" || localScene === "neutral" || localScene === "dynamic"
+          ? localScene
+          : bootstrapScene === "static" || bootstrapScene === "neutral"
+            ? bootstrapScene
+            : (data.scene === "static" || data.scene === "neutral" || data.scene === "dynamic" ? data.scene : "dynamic");
+        const localQuality = localStorage.getItem("msf-glass-quality");
+        const bootstrapQuality = document.documentElement.dataset.garyQuality;
+        const nextQuality: GlassQuality = localQuality === "full" || localQuality === "reduced" || localQuality === "balanced"
+          ? localQuality
+          : bootstrapQuality === "full" || bootstrapQuality === "reduced" || bootstrapQuality === "balanced"
+            ? bootstrapQuality
+            : (data.quality === "full" || data.quality === "reduced" || data.quality === "balanced" ? data.quality : "balanced");
         setScene(nextScene);
         setQuality(nextQuality);
         document.documentElement.dataset.garyScene = nextScene;

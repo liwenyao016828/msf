@@ -1,6 +1,7 @@
 import { type OrbParams } from "./presets";
 import { writeOrbUniforms } from "./orb-uniforms";
 import { orbShaderSource } from "./shader-source";
+import { SlowRenderGuard } from "../../render-guard";
 
 export type OrbRendererOptions = {
   canvas: HTMLCanvasElement;
@@ -12,6 +13,8 @@ export type OrbRendererOptions = {
   initTimeoutMs?: number;
   /** Upper bound for rendered frames per second (0 disables the cap). */
   targetFps?: number;
+  /** The measured render cost on this device is unusable: stop and degrade. */
+  onTooSlow?: (detail: string) => void;
 };
 
 export function createOrbRenderer({
@@ -22,6 +25,7 @@ export function createOrbRenderer({
   onReady,
   initTimeoutMs = 2000,
   targetFps = 30,
+  onTooSlow,
 }: OrbRendererOptions): () => void {
   let disposed = false;
   let animationFrame = 0;
@@ -117,6 +121,7 @@ export function createOrbRenderer({
     const startedAt = performance.now();
     const frameInterval = targetFps > 0 ? 1000 / targetFps : 0;
     let lastFrameAt = 0;
+    const guard = onTooSlow ? new SlowRenderGuard(frameInterval || 33) : null;
 
     device.lost.then((info) => {
       fail(new Error(`WebGPU 设备已断开：${info.message || info.reason}`));
@@ -155,6 +160,7 @@ export function createOrbRenderer({
           return;
         }
         lastFrameAt = now;
+        const frameStartedAt = performance.now();
         resize();
         writeOrbUniforms(
           values,
@@ -181,6 +187,15 @@ export function createOrbRenderer({
         pass.draw(3, 1, 0, 0);
         pass.end();
         device.queue.submit([encoder.finish()]);
+        if (guard && onTooSlow) {
+          const verdict = guard.observe(performance.now() - frameStartedAt, now);
+          if (verdict.degrade) {
+            disposed = true;
+            cancelAnimationFrame(animationFrame);
+            onTooSlow("WebGPU 帧耗时过高");
+            return;
+          }
+        }
         if (!readyNotified) {
           readyNotified = true;
           onReady();

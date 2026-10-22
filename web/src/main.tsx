@@ -16,6 +16,7 @@ import {
 import { getInitialSkin, restoreCachedCustomCSS } from "@/lib/skin";
 import { restoreCachedAccentColor } from "@/lib/accent";
 import { restoreCachedSkinTint } from "@/lib/skinTint";
+import { isSoftwareGpu } from "@/lib/gpu-probe";
 import "@/app/globals.css";
 
 const root = document.documentElement;
@@ -29,6 +30,15 @@ const savedScene = localStorage.getItem("msf-glass-scene");
 const savedQuality = localStorage.getItem("msf-glass-quality");
 root.dataset.garyScene = savedScene === "static" || savedScene === "neutral" ? savedScene : "dynamic";
 root.dataset.garyQuality = savedQuality === "full" || savedQuality === "reduced" ? savedQuality : "balanced";
+// First-visit weak-device default: the animated full-screen WebGL scene costs
+// more than a software rasterizer (SwiftShader/llvmpipe/ANGLE software) can
+// pay — it stalls the main thread and freezes the page (fnOS weak-device
+// reports). Only a never-visited device (no stored look) is defaulted down to
+// the static scene + reduced quality; any explicit choice always wins.
+if (savedScene === null && (isSoftwareGpu() || window.matchMedia("(prefers-reduced-motion: reduce)").matches)) {
+  root.dataset.garyScene = "static";
+  if (savedQuality === null) root.dataset.garyQuality = "reduced";
+}
 root.dataset.skin = getInitialSkin();
 restoreCachedAccentColor();
 restoreCachedSkinTint();

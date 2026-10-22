@@ -2,6 +2,7 @@ import fragmentShaderSource from "./effect.frag.glsl?raw";
 import vertexShaderSource from "./effect.vert.glsl?raw";
 import { type OrbParams } from "./presets";
 import { writeOrbUniforms } from "./orb-uniforms";
+import { SlowRenderGuard } from "../../render-guard";
 
 export type OrbWebGLRendererOptions = {
   canvas: HTMLCanvasElement;
@@ -11,6 +12,8 @@ export type OrbWebGLRendererOptions = {
   onReady: () => void;
   /** Upper bound for rendered frames per second (0 disables the cap). */
   targetFps?: number;
+  /** The measured render cost on this device is unusable: stop and degrade. */
+  onTooSlow?: (detail: string) => void;
 };
 
 function compileShader(gl: WebGL2RenderingContext, type: number, source: string): WebGLShader {
@@ -33,6 +36,7 @@ export function createOrbWebGLRenderer({
   onError,
   onReady,
   targetFps = 30,
+  onTooSlow,
 }: OrbWebGLRendererOptions): () => void {
   let disposed = false;
   let animationFrame = 0;
@@ -94,6 +98,7 @@ export function createOrbWebGLRenderer({
     const startedAt = performance.now();
     const frameInterval = targetFps > 0 ? 1000 / targetFps : 0;
     let lastFrameAt = 0;
+    const guard = onTooSlow ? new SlowRenderGuard(frameInterval || 33) : null;
 
     function resize(): void {
       if (!gl) return;
@@ -118,6 +123,7 @@ export function createOrbWebGLRenderer({
             return;
           }
           lastFrameAt = now;
+          const frameStartedAt = performance.now();
           resize();
           writeOrbUniforms(values, canvas.width, canvas.height, (now - startedAt) / 1000, getParams());
           gl.bindBuffer(gl.UNIFORM_BUFFER, uniformBuffer);
@@ -126,6 +132,15 @@ export function createOrbWebGLRenderer({
           gl.useProgram(program);
           gl.bindVertexArray(vertexArray);
           gl.drawArrays(gl.TRIANGLES, 0, 3);
+          if (guard && onTooSlow) {
+            const verdict = guard.observe(performance.now() - frameStartedAt, now);
+            if (verdict.degrade) {
+              disposed = true;
+              cancelAnimationFrame(animationFrame);
+              onTooSlow("WebGL2 帧耗时过高");
+              return;
+            }
+          }
           if (!readyNotified) {
             readyNotified = true;
             onReady();

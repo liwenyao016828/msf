@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { cn } from "@/lib/utils";
 import { OrbRenderer, type OrbRendererBackend, type OrbRenderState } from "./OrbRenderer";
-import { resolveOrbMode, type OrbMode } from "./orb-capability";
+import { resolveOrbMode, type OrbMode, type ResolvedOrbMode } from "./orb-capability";
 import "./assistant-orb.css";
 
 interface AssistantOrbProps {
@@ -10,6 +10,44 @@ interface AssistantOrbProps {
   disabled?: boolean;
   /** Server-persisted preference; auto still probes the device at runtime. */
   mode?: OrbMode;
+}
+
+/** Set once the runtime guard measures unusable frame costs on this device +
+ * browser. `auto` then starts static immediately instead of re-freezing the
+ * page on every visit. Cleared when the user makes an explicit mode choice. */
+const DEGRADED_KEY = "msf-assistant-orb-degraded";
+
+function readDegraded(): boolean {
+  try {
+    return window.localStorage.getItem(DEGRADED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function markDegraded(reason: string): void {
+  try {
+    window.localStorage.setItem(DEGRADED_KEY, "1");
+    window.localStorage.setItem(`${DEGRADED_KEY}-reason`, reason);
+  } catch {
+    // Storage can be blocked; the in-session degrade still applies.
+  }
+}
+
+function clearDegraded(): void {
+  try {
+    window.localStorage.removeItem(DEGRADED_KEY);
+    window.localStorage.removeItem(`${DEGRADED_KEY}-reason`);
+  } catch {
+    // Ignore blocked storage.
+  }
+}
+
+function initialCapability(mode: OrbMode): { mode: ResolvedOrbMode; reason: string } {
+  if (mode === "auto" && readDegraded()) {
+    return { mode: "static", reason: "本机上次渲染过慢，已降级为静态悬浮球" };
+  }
+  return resolveOrbMode(mode);
 }
 
 export function AssistantOrb({ state = "idle", onClick, disabled = false, mode = "auto" }: AssistantOrbProps) {
@@ -25,9 +63,12 @@ export function AssistantOrb({ state = "idle", onClick, disabled = false, mode =
   // Probe once at mount and whenever the server preference changes. The
   // weak-device check creates a small WebGL context, so it must not run on
   // every render; a lazy state initializer keeps it out of the render phase.
-  const [capability, setCapability] = useState(() => resolveOrbMode(mode));
+  const [capability, setCapability] = useState(() => initialCapability(mode));
   useEffect(() => {
-    setCapability(resolveOrbMode(mode));
+    // An explicit server choice (dynamic/static) supersedes the runtime
+    // degrade record; auto keeps it.
+    if (mode !== "auto") clearDegraded();
+    setCapability(initialCapability(mode));
   }, [mode]);
   const staticOrb = capability.mode === "static";
 
@@ -88,12 +129,27 @@ export function AssistantOrb({ state = "idle", onClick, disabled = false, mode =
     const handleVisibility = () => renderer.setPaused(document.visibilityState !== "visible");
     document.addEventListener("visibilitychange", handleVisibility);
     // Cap the frame rate and bound the WebGPU adapter request so a hung GPU
-    // init falls back to WebGL2 instead of blocking first paint forever.
-    renderer.init({ targetFps: 30, initTimeoutMs: 2000 }).then((backend) => {
-      if (!disposed) setRendererBackend(backend);
-    }).catch(() => {
-      if (!disposed) setRendererBackend(null);
-    });
+    // init falls back to WebGL2 instead of blocking first paint forever. The
+    // onTooSlow guard measures real frame cost on devices the static probe
+    // cannot classify (masked deviceMemory / renderer strings) and, once it
+    // trips, marks this device degraded so future visits start static.
+    renderer
+      .init({
+        targetFps: 30,
+        initTimeoutMs: 2000,
+        onTooSlow: (detail) => {
+          if (disposed) return;
+          markDegraded(detail);
+          setCapability({ mode: "static", reason: `检测到渲染过慢（${detail}），已降级为静态悬浮球` });
+          setRendererBackend(null);
+        },
+      })
+      .then((backend) => {
+        if (!disposed) setRendererBackend(backend);
+      })
+      .catch(() => {
+        if (!disposed) setRendererBackend(null);
+      });
     return () => {
       disposed = true;
       document.removeEventListener("visibilitychange", handleVisibility);

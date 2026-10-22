@@ -8,6 +8,8 @@
  * first frame is drawn and degrade to the static poster orb instead.
  */
 
+import { detectGpuRenderer, looksLikeSoftwareRenderer } from "@/lib/gpu-probe";
+
 export type OrbMode = "auto" | "dynamic" | "static";
 export type ResolvedOrbMode = "dynamic" | "static";
 
@@ -21,10 +23,6 @@ export interface OrbCapabilityInput {
   gpuRenderer: string | null;
 }
 
-/** Software/emulated rasterizers: no real GPU, shader cost lands on the CPU. */
-const SOFTWARE_RENDERER_RE =
-  /swiftshader|llvmpipe|software rasterizer|software renderer|software rendering|basic render|microsoft basic|softpipe|mesa software|google swiftshader|angle.*software|vulkan.*swiftshader/i;
-
 /** A device is "weak" when it hits one of these heuristics. */
 export function isWeakDevice(input: {
   hardwareConcurrency: number | null;
@@ -33,7 +31,6 @@ export function isWeakDevice(input: {
 }): boolean {
   const cores = input.hardwareConcurrency;
   const memory = input.deviceMemory;
-  const renderer = input.gpuRenderer?.toLowerCase() ?? "";
 
   // Few cores AND little RAM is the classic low-end phone / old laptop.
   if (cores !== null && cores > 0 && cores <= 4 && memory !== null && memory > 0 && memory <= 4) {
@@ -44,7 +41,7 @@ export function isWeakDevice(input: {
     return true;
   }
   // Software rasterizer = the fragment shader runs on the CPU thread by thread.
-  if (SOFTWARE_RENDERER_RE.test(renderer)) {
+  if (looksLikeSoftwareRenderer(input.gpuRenderer)) {
     return true;
   }
   return false;
@@ -111,24 +108,6 @@ function readDeviceMemory(): number | null {
   try {
     const value = (navigator as Navigator & { deviceMemory?: number }).deviceMemory;
     return typeof value === "number" && Number.isFinite(value) ? value : null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Ask the GPU for its real renderer string. WebGL context creation is a
- * cheap, one-off probe and only runs before the first orb frame.
- */
-function detectGpuRenderer(): string | null {
-  try {
-    const canvas = document.createElement("canvas");
-    const gl = canvas.getContext("webgl2") ?? canvas.getContext("webgl");
-    if (!gl) return null;
-    const extension = gl.getExtension("WEBGL_debug_renderer_info");
-    if (!extension) return null;
-    const renderer = gl.getParameter(extension.UNMASKED_RENDERER_WEBGL);
-    return typeof renderer === "string" ? renderer : null;
   } catch {
     return null;
   }

@@ -23,8 +23,16 @@ describe("appearance initialization contract", () => {
   it("defaults new browsers to dynamic balanced without overriding explicit quality", () => {
     expect(main).toContain('root.dataset.garyScene = savedScene === "static" || savedScene === "neutral" ? savedScene : "dynamic"');
     expect(main).toContain('savedQuality === "full" || savedQuality === "reduced" ? savedQuality : "balanced"');
-    expect(settings).toContain('useState<GlassQuality>("balanced")');
-    expect(settings).toContain('storedQuality === "full" || storedQuality === "reduced" ? storedQuality : "balanced"');
+    // First-visit weak devices start static/reduced so the full-screen WebGL
+    // scene cannot stall their main thread.
+    expect(main).toContain('if (savedScene === null && (isSoftwareGpu() || window.matchMedia("(prefers-reduced-motion: reduce)").matches))');
+    expect(main).toContain('root.dataset.garyScene = "static"');
+    // Settings hydration must never clobber the weak-device bootstrap with the
+    // server's "dynamic"/"balanced" never-chosen fallback: local choice wins,
+    // then the capability-decided bootstrap, then the server value.
+    expect(settings).toContain('const localScene = localStorage.getItem("msf-glass-scene")');
+    expect(settings).toContain('const bootstrapScene = document.documentElement.dataset.garyScene');
+    expect(settings).toContain('const localQuality = localStorage.getItem("msf-glass-quality")');
     expect(login).toContain("normalizeGlassQuality(root.dataset.garyQuality)");
     expect(login).toContain("maxRenderPixels={qualityProfile.pixels}");
     expect(login).toContain("maxDpr={qualityProfile.dpr}");
