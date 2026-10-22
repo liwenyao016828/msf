@@ -170,3 +170,17 @@
     animation: none;
   }
 }
+
+/* Embedded (iframe) mode: keep the dial visible but freeze all decorative motion. */
+.assistant-orb--static .assistant-orb__fallback::before {
+  animation: none;
+  opacity: 0.4;
+}
+
+.assistant-orb--static .assistant-orb__fallback {
+  transition: none;
+}
+
+.assistant-orb--static:hover {
+  transform: none;
+}

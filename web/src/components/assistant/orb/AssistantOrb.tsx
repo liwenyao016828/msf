@@ -9,6 +9,16 @@ interface AssistantOrbProps {
   disabled?: boolean;
 }
 
+/** True when MSF runs inside a host desktop iframe, where GPU adapters may hang. */
+function isEmbedded(): boolean {
+  try {
+    return window.self !== window.top;
+  } catch {
+    // Cross-origin parent -> definitely embedded.
+    return true;
+  }
+}
+
 export function AssistantOrb({ state = "idle", onClick, disabled = false }: AssistantOrbProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const rendererRef = useRef<OrbRenderer | null>(null);
@@ -63,6 +73,13 @@ export function AssistantOrb({ state = "idle", onClick, disabled = false }: Assi
     const canvas = canvasRef.current;
     if (!canvas || disabled) return;
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      setRendererBackend(null);
+      return;
+    }
+    // When MSF is embedded in a host desktop (iframe), the WebGPU adapter request
+    // can hang without resolving or rejecting, which freezes the whole page.
+    // Use the static poster canvas in that case and skip GPU initialisation.
+    if (window.self !== window.top) {
       setRendererBackend(null);
       return;
     }
@@ -166,7 +183,7 @@ export function AssistantOrb({ state = "idle", onClick, disabled = false }: Assi
     <button
       type="button"
       ref={orbRef}
-      className={cn("assistant-orb", `assistant-orb--${state}`, rendererBackend ? "assistant-orb--rendered" : "assistant-orb--fallback", position && "assistant-orb--positioned", dockedSide && `assistant-orb--docked-${dockedSide}`)}
+      className={cn("assistant-orb", `assistant-orb--${state}`, rendererBackend ? "assistant-orb--rendered" : "assistant-orb--fallback", position && "assistant-orb--positioned", dockedSide && `assistant-orb--docked-${dockedSide}`, isEmbedded() && "assistant-orb--static")}
       data-renderer={rendererBackend || "fallback"}
       style={position ? { left: `${position.x}px`, top: `${position.y}px` } : undefined}
       onClick={handleClick}
