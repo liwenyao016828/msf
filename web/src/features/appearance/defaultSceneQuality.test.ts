@@ -23,11 +23,18 @@ describe("appearance initialization contract", () => {
   it("defaults new browsers to dynamic balanced without overriding explicit quality", () => {
     expect(main).toContain('root.dataset.garyScene = savedScene === "static" || savedScene === "neutral" ? savedScene : "dynamic"');
     expect(main).toContain('savedQuality === "full" || savedQuality === "reduced" ? savedQuality : "balanced"');
-    // First-visit weak devices start static/reduced so the full-screen WebGL
-    // scene cannot stall their main thread; a browser that already tripped the
-    // whole-page perf watchdog stays static too.
-    expect(main).toContain('if (savedScene === null && (isSoftwareGpu() || window.matchMedia("(prefers-reduced-motion: reduce)").matches || readLowPowerMode()))');
+    // Never-chosen wide (desktop) viewports default to the light mode, because
+    // the animated scene blocks the main thread *synchronously* there and the
+    // runtime watchdog can never get a first sample to react to. Phones keep
+    // the animated default; screen.width avoids mislabeling landscape phones.
+    expect(main).toContain('const wideDevice = (window.screen?.width || window.innerWidth || 0) >= 900;');
+    expect(main).toContain('if (savedScene === null && (wideDevice || isSoftwareGpu() || window.matchMedia("(prefers-reduced-motion: reduce)").matches || readLowPowerMode()))');
     expect(main).toContain('root.dataset.garyScene = "static"');
+    // The same first visit must seed the orb's degrade record, otherwise the
+    // AI panel still pays the orb shader freeze behind a static scene.
+    expect(main).toContain('localStorage.setItem(ORB_DEGRADED_KEY, "1")');
+    // No-menu escape hatch for a machine stuck on a stored "dynamic" choice.
+    expect(main).toContain('new URLSearchParams(window.location.search).get("safe") === "1"');
     // Settings hydration must never clobber the weak-device bootstrap with the
     // server's "dynamic"/"balanced" never-chosen fallback: local choice wins,
     // then the capability-decided bootstrap, then the server value.
