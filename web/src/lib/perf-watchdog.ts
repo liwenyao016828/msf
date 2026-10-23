@@ -28,6 +28,8 @@ export type GapStats = {
 export type WatchdogOptions = {
   /** Minimum ms between frames counted as a stall. */
   stallThresholdMs?: number;
+  /** A single frame gap this long is a hard freeze: degrade on the first one. */
+  hardStallMs?: number;
   /** Frames to sample after the settle delay. */
   sampleFrames?: number;
   /** Delay before sampling, so cold-parse long tasks don't trip it. */
@@ -39,6 +41,10 @@ export type WatchdogOptions = {
 
 const DEFAULTS = {
   stallThresholdMs: 150,
+  // A page that stalls the main thread for a few seconds on a single frame is
+  // exactly the "freeze" report; one such gap condemns the device outright,
+  // without waiting for the milder jank streak below.
+  hardStallMs: 2500,
   // Cold load includes hydration + first paint; require a clean baseline
   // before counting, and a sustained streak (5 stalls ≈ one per second on a
   // 30fps-capable device) so GC pauses don't condemn an otherwise smooth box.
@@ -87,7 +93,7 @@ export function degradeNow(stats: GapStats): void {
  * an explicit pick is respected and only re-checked if they clear it.
  */
 export function startPerfWatchdog(options: WatchdogOptions = {}): () => void {
-  const { stallThresholdMs, sampleFrames, settleMs, stallBudget, onDegrade } = {
+  const { stallThresholdMs, hardStallMs, sampleFrames, settleMs, stallBudget, onDegrade } = {
     ...DEFAULTS,
     ...options,
   };
@@ -107,6 +113,12 @@ export function startPerfWatchdog(options: WatchdogOptions = {}): () => void {
   let maxGapMs = 0;
   let last = 0;
 
+  const finish = () => {
+    const stats: GapStats = { stallCount, maxGapMs };
+    degradeNow(stats);
+    onDegrade?.(stats);
+  };
+
   const tick = (now: number) => {
     if (cancelled) return;
     if (document.visibilityState !== "visible") {
@@ -121,15 +133,16 @@ export function startPerfWatchdog(options: WatchdogOptions = {}): () => void {
       const gap = now - last;
       if (gap > maxGapMs) maxGapMs = gap;
       if (gap >= stallThresholdMs) stallCount += 1;
+      // One sustained multi-second freeze during steady state condemns the
+      // device immediately; waiting for the jank streak would let the page
+      // stay frozen the whole time the user is staring at it.
+      if (gap >= hardStallMs || stallCount >= stallBudget) {
+        finish();
+        return;
+      }
     }
     last = now;
     frames += 1;
-    if (stallCount >= stallBudget) {
-      const stats: GapStats = { stallCount, maxGapMs };
-      degradeNow(stats);
-      onDegrade?.(stats);
-      return;
-    }
     if (frames < sampleFrames) {
       raf = requestAnimationFrame(tick);
       return;
