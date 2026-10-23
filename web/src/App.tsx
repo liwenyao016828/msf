@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useState } from "react";
 import { Navigate, Route, Routes, useLocation, useSearchParams } from "react-router-dom";
 import { AlertCircle, Loader2, RefreshCw } from "lucide-react";
 import { useAuth } from "@/lib/auth";
+import { startPerfWatchdog } from "@/lib/perf-watchdog";
 
 const SceneBackdrop = lazy(() => import("@/components/liquid-glass/SceneBackdrop").then(m => ({ default: m.SceneBackdrop })));
 import { GlassSurface } from "@/components/liquid-glass/GlassSurface";
@@ -152,6 +153,11 @@ export function App() {
   const { pathname } = useLocation();
   const { user, initialized, loading } = useAuth();
   const [sceneReady, setSceneReady] = useState(false);
+  useEffect(() => startPerfWatchdog({
+    // Both login and authenticated pages paint the full-screen wave scene;
+    // measure from app root so every entry route is covered.
+    onDegrade: (stats) => console.info(`[msf] 检测到持续掉帧（${stats.stallCount} 次），已自动切换静态低耗模式`),
+  }), []);
   useEffect(() => {
     // Public route code loads alongside auth; protected API calls still wait.
     const load = pathname === "/mihomo/proxies" ? loadMihomoProxies

@@ -17,6 +17,7 @@ import { getInitialSkin, restoreCachedCustomCSS } from "@/lib/skin";
 import { restoreCachedAccentColor } from "@/lib/accent";
 import { restoreCachedSkinTint } from "@/lib/skinTint";
 import { isSoftwareGpu } from "@/lib/gpu-probe";
+import { readLowPowerMode } from "@/lib/perf-watchdog";
 import "@/app/globals.css";
 
 const root = document.documentElement;
@@ -35,7 +36,7 @@ root.dataset.garyQuality = savedQuality === "full" || savedQuality === "reduced"
 // pay — it stalls the main thread and freezes the page (fnOS weak-device
 // reports). Only a never-visited device (no stored look) is defaulted down to
 // the static scene + reduced quality; any explicit choice always wins.
-if (savedScene === null && (isSoftwareGpu() || window.matchMedia("(prefers-reduced-motion: reduce)").matches)) {
+if (savedScene === null && (isSoftwareGpu() || window.matchMedia("(prefers-reduced-motion: reduce)").matches || readLowPowerMode())) {
   root.dataset.garyScene = "static";
   if (savedQuality === null) root.dataset.garyQuality = "reduced";
 }

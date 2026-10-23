@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } f
 import { cn } from "@/lib/utils";
 import { OrbRenderer, type OrbRendererBackend, type OrbRenderState } from "./OrbRenderer";
 import { resolveOrbMode, type OrbMode, type ResolvedOrbMode } from "./orb-capability";
+import { LOW_POWER_EVENT, ORB_DEGRADED_KEY } from "@/lib/perf-watchdog";
 import "./assistant-orb.css";
 
 interface AssistantOrbProps {
@@ -14,8 +15,9 @@ interface AssistantOrbProps {
 
 /** Set once the runtime guard measures unusable frame costs on this device +
  * browser. `auto` then starts static immediately instead of re-freezing the
- * page on every visit. Cleared when the user makes an explicit mode choice. */
-const DEGRADED_KEY = "msf-assistant-orb-degraded";
+ * page on every visit. Cleared when the user makes an explicit mode choice.
+ * Same key the whole-page watchdog writes in perf-watchdog.ts. */
+const DEGRADED_KEY = ORB_DEGRADED_KEY;
 
 function readDegraded(): boolean {
   try {
@@ -69,6 +71,16 @@ export function AssistantOrb({ state = "idle", onClick, disabled = false, mode =
     // degrade record; auto keeps it.
     if (mode !== "auto") clearDegraded();
     setCapability(initialCapability(mode));
+  }, [mode]);
+  // The whole-page watchdog can decide mid-session that this device can't
+  // sustain the animated scene; flip the orb to static immediately rather
+  // than only on the next load.
+  useEffect(() => {
+    const onLowPower = () => {
+      if (mode === "auto") setCapability({ mode: "static", reason: "页面实测掉帧，已降级为静态悬浮球" });
+    };
+    window.addEventListener(LOW_POWER_EVENT, onLowPower);
+    return () => window.removeEventListener(LOW_POWER_EVENT, onLowPower);
   }, [mode]);
   const staticOrb = capability.mode === "static";
 

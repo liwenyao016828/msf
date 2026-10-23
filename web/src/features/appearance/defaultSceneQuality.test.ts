@@ -24,8 +24,9 @@ describe("appearance initialization contract", () => {
     expect(main).toContain('root.dataset.garyScene = savedScene === "static" || savedScene === "neutral" ? savedScene : "dynamic"');
     expect(main).toContain('savedQuality === "full" || savedQuality === "reduced" ? savedQuality : "balanced"');
     // First-visit weak devices start static/reduced so the full-screen WebGL
-    // scene cannot stall their main thread.
-    expect(main).toContain('if (savedScene === null && (isSoftwareGpu() || window.matchMedia("(prefers-reduced-motion: reduce)").matches))');
+    // scene cannot stall their main thread; a browser that already tripped the
+    // whole-page perf watchdog stays static too.
+    expect(main).toContain('if (savedScene === null && (isSoftwareGpu() || window.matchMedia("(prefers-reduced-motion: reduce)").matches || readLowPowerMode()))');
     expect(main).toContain('root.dataset.garyScene = "static"');
     // Settings hydration must never clobber the weak-device bootstrap with the
     // server's "dynamic"/"balanced" never-chosen fallback: local choice wins,
