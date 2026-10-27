@@ -164,7 +164,7 @@ cat > "${STAGE}/app/ui/config" <<'UICONF'
             "title": "MSF Free",
             "desc": "MSF Free Web UI",
             "icon": "images/{0}.png",
-            "type": "url",
+            "type": "iframe",
             "port": "7777",
             "protocol": "http",
             "url": "/",
