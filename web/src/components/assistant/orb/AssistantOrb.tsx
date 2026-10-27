@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { cn } from "@/lib/utils";
 import { OrbRenderer, type OrbRendererBackend, type OrbRenderState } from "./OrbRenderer";
-import { resolveOrbMode, type OrbMode, type ResolvedOrbMode } from "./orb-capability";
+import { ORB_SAFE_MODE_KEY, collectOrbCapability, resolveOrbStartup, writeOrbBackend, type OrbMode, type ResolvedOrbMode } from "./orb-capability";
 import { LOW_POWER_EVENT, ORB_DEGRADED_KEY } from "@/lib/perf-watchdog";
 import "./assistant-orb.css";
 
@@ -14,9 +14,10 @@ interface AssistantOrbProps {
 }
 
 /** Set once the runtime guard measures unusable frame costs on this device +
- * browser. `auto` then starts static immediately instead of re-freezing the
- * page on every visit. Cleared when the user makes an explicit mode choice.
- * Same key the whole-page watchdog writes in perf-watchdog.ts. */
+ * browser. Honored across loads for BOTH auto and server-forced dynamic so a
+ * weak device never re-freezes on every visit; only an explicit settings
+ * change back to dynamic clears it (one deliberate retry). Same key the
+ * whole-page watchdog writes in perf-watchdog.ts. */
 const DEGRADED_KEY = ORB_DEGRADED_KEY;
 
 function readDegraded(): boolean {
@@ -45,11 +46,39 @@ function clearDegraded(): void {
   }
 }
 
-function initialCapability(mode: OrbMode): { mode: ResolvedOrbMode; reason: string } {
-  if (mode === "auto" && readDegraded()) {
-    return { mode: "static", reason: "本机上次渲染过慢，已降级为静态悬浮球" };
+function readSafeMode(): boolean {
+  try {
+    return window.localStorage.getItem(ORB_SAFE_MODE_KEY) === "1";
+  } catch {
+    return false;
   }
-  return resolveOrbMode(mode);
+}
+
+function clearSafeMode(): void {
+  try {
+    window.localStorage.removeItem(ORB_SAFE_MODE_KEY);
+  } catch {
+    // Ignore blocked storage.
+  }
+}
+
+/**
+ * Resolve the startup mode. `explicitChoice` must be true only when the mode
+ * prop changed while this orb was already mounted (user just saved a new
+ * preference in settings) — a plain reload of the same preference keeps the
+ * degrade record, so a server-forced "dynamic" can no longer freeze the page
+ * on every visit.
+ */
+function decideCapability(mode: OrbMode, explicitChoice: boolean): { mode: ResolvedOrbMode; reason: string } {
+  const decision = resolveOrbStartup({
+    ...collectOrbCapability(mode),
+    degraded: readDegraded(),
+    safeMode: readSafeMode(),
+    explicitChoice,
+  });
+  if (decision.clearDegraded) clearDegraded();
+  if (decision.clearSafe) clearSafeMode();
+  return { mode: decision.mode, reason: decision.reason };
 }
 
 export function AssistantOrb({ state = "idle", onClick, disabled = false, mode = "auto" }: AssistantOrbProps) {
@@ -65,23 +94,27 @@ export function AssistantOrb({ state = "idle", onClick, disabled = false, mode =
   // Probe once at mount and whenever the server preference changes. The
   // weak-device check creates a small WebGL context, so it must not run on
   // every render; a lazy state initializer keeps it out of the render phase.
-  const [capability, setCapability] = useState(() => initialCapability(mode));
+  const prevModeRef = useRef<OrbMode | null>(null);
+  const [capability, setCapability] = useState(() => decideCapability(mode, false));
   useEffect(() => {
-    // An explicit server choice (dynamic/static) supersedes the runtime
-    // degrade record; auto keeps it.
-    if (mode !== "auto") clearDegraded();
-    setCapability(initialCapability(mode));
+    // Only a preference that changed while this orb was already mounted (the
+    // user just saved a new choice in settings) counts as an explicit choice.
+    // A plain reload of the same preference keeps the degrade/safe records,
+    // so a server-forced "dynamic" cannot re-freeze the page every visit.
+    const explicitChoice = prevModeRef.current !== null && prevModeRef.current !== mode;
+    prevModeRef.current = mode;
+    setCapability(decideCapability(mode, explicitChoice));
   }, [mode]);
   // The whole-page watchdog can decide mid-session that this device can't
   // sustain the animated scene; flip the orb to static immediately rather
-  // than only on the next load.
+  // than only on the next load — regardless of the server preference.
   useEffect(() => {
     const onLowPower = () => {
-      if (mode === "auto") setCapability({ mode: "static", reason: "页面实测掉帧，已降级为静态悬浮球" });
+      setCapability({ mode: "static", reason: "页面实测掉帧，已降级为静态悬浮球" });
     };
     window.addEventListener(LOW_POWER_EVENT, onLowPower);
     return () => window.removeEventListener(LOW_POWER_EVENT, onLowPower);
-  }, [mode]);
+  }, []);
   const staticOrb = capability.mode === "static";
 
   const getBounds = () => {
@@ -130,6 +163,7 @@ export function AssistantOrb({ state = "idle", onClick, disabled = false, mode =
     // Degraded/static path: skip GPU init entirely so a weak device or an
     // embedded host iframe can never freeze the page behind the orb.
     if (staticOrb) {
+      writeOrbBackend("static", "device-probe");
       setRendererBackend(null);
       return;
     }
@@ -152,12 +186,23 @@ export function AssistantOrb({ state = "idle", onClick, disabled = false, mode =
         onTooSlow: (detail) => {
           if (disposed) return;
           markDegraded(detail);
+          writeOrbBackend("static", "measured-slow");
           setCapability({ mode: "static", reason: `检测到渲染过慢（${detail}），已降级为静态悬浮球` });
           setRendererBackend(null);
         },
       })
       .then((backend) => {
-        if (!disposed) setRendererBackend(backend);
+        if (disposed) return;
+        if (backend === "static") {
+          // No usable WebGPU adapter: stay on the static poster instead of
+          // re-trying the heavy shader through the software rasterizer.
+          writeOrbBackend("static", "webgpu-adapter-null");
+          setCapability({ mode: "static", reason: "WebGPU 适配器不可用，已降级为静态悬浮球" });
+          setRendererBackend(null);
+          return;
+        }
+        writeOrbBackend(backend);
+        setRendererBackend(backend);
       })
       .catch(() => {
         if (!disposed) setRendererBackend(null);

@@ -18,6 +18,7 @@ import { restoreCachedAccentColor } from "@/lib/accent";
 import { restoreCachedSkinTint } from "@/lib/skinTint";
 import { isSoftwareGpu } from "@/lib/gpu-probe";
 import { ORB_DEGRADED_KEY, readLowPowerMode } from "@/lib/perf-watchdog";
+import { ORB_SAFE_MODE_KEY } from "@/components/assistant/orb/orb-capability";
 import "@/app/globals.css";
 
 const root = document.documentElement;
@@ -27,13 +28,16 @@ const savedTheme = localStorage.getItem("msf-theme");
 const useDarkTheme = savedTheme === "dark" || (savedTheme !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches);
 root.classList.toggle("dark", useDarkTheme);
 root.classList.toggle("light", !useDarkTheme);
-// Support escape hatch: opening MSF with ?safe=1 forces the light mode even
-// when an older explicit "dynamic" choice is stored, and persists it so the
-// next plain visit stays smooth. No menus, no devtools required.
+// Support escape hatch: opening MSF with ?safe=1 forces the light/static look
+// even when an older explicit "dynamic" choice is stored, and persists it so
+// the next plain visit stays smooth. No menus, no devtools required. It also
+// pins the orb to its poster: the freeze-every-load bug was a stored
+// server-side "dynamic" orb preference re-arming the heavy shader each visit.
 try {
   if (new URLSearchParams(window.location.search).get("safe") === "1") {
     localStorage.setItem("msf-glass-scene", "static");
     localStorage.setItem("msf-glass-quality", "reduced");
+    localStorage.setItem(ORB_SAFE_MODE_KEY, "1");
   }
 } catch {
   // URL/storage access can fail in hardened webviews; ignore.

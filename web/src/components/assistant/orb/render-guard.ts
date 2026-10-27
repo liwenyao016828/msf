@@ -33,8 +33,14 @@ export class SlowRenderGuard {
    * `costMs` = wall time spent inside the render callback.
    * `nowMs`  = the rAF timestamp of this frame. */
   observe(costMs: number, nowMs: number): SlowRenderVerdict {
+    // The first rendered frame compiles the shader and can block the main
+    // thread for seconds — and this watchdog runs on that same blocked thread,
+    // so waiting for a second frame may never happen. Decide on the first
+    // frame, then keep requiring two consecutive expensive frames afterwards.
+    const isFirstFrame = this.lastRenderAt === 0;
+
     // Frame cost: a SwiftShader/software-rendered submit blocks the main
-    // thread inside the callback. Two consecutive expensive frames are enough.
+    // thread inside the callback.
     if (costMs >= this.costThresholdMs) {
       this.slowCostStreak += 1;
     } else {
@@ -58,6 +64,11 @@ export class SlowRenderGuard {
     }
     this.lastRenderAt = nowMs;
 
-    return { degrade: this.slowCostStreak >= 2 || this.slowGapStreak >= 10 };
+    return {
+      degrade:
+        (isFirstFrame && this.slowCostStreak >= 1) ||
+        this.slowCostStreak >= 2 ||
+        this.slowGapStreak >= 10,
+    };
   }
 }

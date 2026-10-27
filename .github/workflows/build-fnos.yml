@@ -1,0 +1,157 @@
+name: Build fnOS package (.fpk)
+
+# 构建 fnOS 安装包（msf_<version>_x86.fpk / _arm.fpk）。
+#
+# 触发方式：
+#   · push tag v*          → 构建 + 发布 GitHub Release（fpk + SHA256SUMS）
+#   · push main            → 只构建（artifact 可下载，不发布），保证 main 随时可打包
+#   · pull_request         → 只构建，不发布
+#   · workflow_dispatch    → 手动触发，ref=tag 时发布，ref=分支时只构建
+#
+# 流程：pnpm install + vite build 出前端（产物写入 internal/server/web/dist，
+# 由 go:embed 打进二进制）→ go build 交叉编译 amd64/arm64 →
+# packaging/fnos/build-fpk.sh 用官方 fnpack 出 .fpk。
+#
+# 发布用内置 secrets.GITHUB_TOKEN（顶层 permissions: contents: write），
+# 不需要额外配 PAT。
+#
+# 注意：本仓库的自动升级链路（check-upstream.yml）用 GITHUB_TOKEN 推 tag
+# 不会触发本 workflow（GitHub 防递归规则），所以那边是「派发」而不是等
+# tag push 自动触发 —— 见 check-upstream.yml 文件头。
+
+on:
+  push:
+    tags: [ 'v*' ]
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      force_release:
+        description: '即使在分支上也创建 Release（tag 用 VERSION 文件里的版本号）'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-fnos-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  fpk:
+    name: Build fpk (${{ matrix.arch }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            platform: x86
+          - arch: arm64
+            platform: arm
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Read version
+        id: ver
+        run: |
+          set -euo pipefail
+          # 版本优先取 tag（refs/tags/v0.6.14 → 0.6.14），分支构建取 VERSION 文件，
+          # 都没有就 0.0.0（仅 artifact，绝不发布）。
+          REF_NAME="${GITHUB_REF_NAME:-}"
+          if [[ "${GITHUB_REF:-}" == refs/tags/v* ]]; then
+            VERSION="${REF_NAME#v}"
+          elif [ -f VERSION ]; then
+            VERSION="$(tr -d '[:space:]' < VERSION)"
+          else
+            VERSION="0.0.0"
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Building version ${VERSION} for ${{ matrix.arch }}"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build frontend
+        working-directory: web
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run typecheck
+          npm run test
+          npm run build
+
+      - name: Build linux/${{ matrix.arch }} binary
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          COMMIT="$(git rev-parse HEAD)"
+          BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          LDFLAGS="-s -w -X main.version=${VERSION} -X main.buildCommit=${COMMIT} -X main.buildTag=v${VERSION} -X main.buildTagCommit=unknown -X main.buildSourceCommit=${COMMIT} -X main.buildTime=${BUILD_TIME}"
+          CGO_ENABLED=0 GOOS=linux GOARCH=${{ matrix.arch }} \
+            go build -trimpath -ldflags "${LDFLAGS}" -o "dist/msf-linux-${{ matrix.arch }}" ./cmd/msf
+          "./dist/msf-linux-${{ matrix.arch }}" version || true
+
+      - name: Package .fpk
+        env:
+          APP_NAME: msf
+          VERSION: ${{ steps.ver.outputs.version }}
+          DIST: dist
+          ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          packaging/fnos/build-fpk.sh
+          FPK="dist/msf_${VERSION}_${{ matrix.platform }}.fpk"
+          test -s "$FPK"
+          md5sum "$FPK" > "${FPK}.md5"
+          sha256sum "$FPK" > "${FPK}.sha256"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: msf-fpk-${{ matrix.platform }}
+          path: |
+            dist/*.fpk
+            dist/*.fpk.md5
+            dist/*.fpk.sha256
+          if-no-files-found: error
+
+      # Release 只在 tag 构建时创建；分支/PR 构建自动跳过。
+      - name: Create Release and upload fpk
+        if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.force_release)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          set -euo pipefail
+          TAG="v${VERSION}"
+          # 分支 + force_release 时 tag 可能还不存在，先补建（GITHUB_TOKEN 推的
+          # tag 不触发其它 workflow，无递归风险）。
+          if ! git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
+            git tag "${TAG}" "$GITHUB_SHA"
+            git push origin "refs/tags/${TAG}"
+          fi
+          # release 不存在则创建（已存在则复用，方便重跑补传资产）
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
+            || gh release create "$TAG" --repo "$GITHUB_REPOSITORY" \
+                 --title "MSF Free ${VERSION} (fnOS)" \
+                 --generate-notes
+          gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" \
+            "dist/msf_${VERSION}_${{ matrix.platform }}.fpk" \
+            "dist/msf_${VERSION}_${{ matrix.platform }}.fpk.md5" \
+            "dist/msf_${VERSION}_${{ matrix.platform }}.fpk.sha256" \
+            --clobber

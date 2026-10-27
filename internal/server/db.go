@@ -219,7 +219,7 @@ func (a *App) migrate() error {
 			execution_mode text default 'confirm_writes',
 			show_tool_details numeric default true,
 			orb_enabled numeric default true,
-			orb_mode text default 'auto',
+			orb_mode text default 'static',
 			updated_at datetime
 		)`,
 		`create table if not exists assistant_sessions (
@@ -377,7 +377,7 @@ func (a *App) ensureAssistantRuntimeColumns() error {
 
 func (a *App) ensureAssistantOrbModeColumn() error {
 	return a.ensureTableColumns("assistant_settings", map[string]string{
-		"orb_mode": "text default 'auto'",
+		"orb_mode": "text default 'static'",
 	})
 }
 

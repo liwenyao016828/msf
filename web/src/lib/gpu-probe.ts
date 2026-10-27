@@ -12,7 +12,13 @@ const SOFTWARE_RENDERER_RE =
   /swiftshader|llvmpipe|software rasterizer|software renderer|software rendering|basic render|microsoft basic|softpipe|mesa software|google swiftshader|angle.*software|vulkan.*swiftshader/i;
 
 export function looksLikeSoftwareRenderer(renderer: string | null): boolean {
-  return renderer !== null && SOFTWARE_RENDERER_RE.test(renderer);
+  // Fail closed. Firefox masks WEBGL_debug_renderer_info (since 2020) and some
+  // Chromium privacy modes do the same, so a missing renderer string is NOT
+  // proof of a hardware GPU. Running the heavy orb shader on an unverified
+  // device is the failure mode we care about, so "cannot prove hardware" is
+  // treated as software: degrade to the static orb instead of risking a freeze.
+  if (!renderer) return true;
+  return SOFTWARE_RENDERER_RE.test(renderer);
 }
 
 /**

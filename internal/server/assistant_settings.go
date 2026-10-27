@@ -34,7 +34,11 @@ func normalizeOrbMode(mode OrbMode) OrbMode {
 	case OrbModeDynamic, OrbModeStatic:
 		return mode
 	default:
-		return OrbModeAuto
+		// Static is the shipped default: the dynamic orb's heavy shader
+		// froze real installs, and users asked for "just make it static,
+		// stop detecting". Auto is no longer the fallback for legacy or
+		// unknown values either — they land on static too.
+		return OrbModeStatic
 	}
 }
 
@@ -84,13 +88,13 @@ func defaultAssistantSettings() assistantSettings {
 		ExecutionMode:  assistant.ExecutionConfirmWrites,
 		ShowToolDetail: true,
 		OrbEnabled:     true,
-		OrbMode:        OrbModeAuto,
+		OrbMode:        OrbModeStatic,
 	}
 }
 
 func (a *App) getAssistantSettings() (assistantSettings, error) {
 	settings := defaultAssistantSettings()
-	row := a.DB.QueryRow(`select enabled,coalesce(provider,''),coalesce(base_url,''),api_key_ciphertext,api_key_nonce,coalesce(model,''),coalesce(protocol,''),coalesce(context_tokens,32000),coalesce(temperature,0.2),coalesce(request_timeout,60),coalesce(max_tool_rounds,8),coalesce(execution_mode,'confirm_writes'),coalesce(show_tool_details,true),coalesce(orb_enabled,true),coalesce(orb_mode,'auto') from assistant_settings where id=1`)
+	row := a.DB.QueryRow(`select enabled,coalesce(provider,''),coalesce(base_url,''),api_key_ciphertext,api_key_nonce,coalesce(model,''),coalesce(protocol,''),coalesce(context_tokens,32000),coalesce(temperature,0.2),coalesce(request_timeout,60),coalesce(max_tool_rounds,8),coalesce(execution_mode,'confirm_writes'),coalesce(show_tool_details,true),coalesce(orb_enabled,true),coalesce(orb_mode,'static') from assistant_settings where id=1`)
 	var enabled, showTools, orb bool
 	var provider, baseURL, model, protocol, executionMode, orbMode string
 	var cipherText, nonce []byte

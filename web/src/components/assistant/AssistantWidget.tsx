@@ -8,16 +8,38 @@ import type { OrbRenderState } from "./orb/OrbRenderer";
 import type { OrbMode } from "./orb/orb-capability";
 import "./assistant.css";
 
+/**
+ * Escape hatch for a browser that freezes before settings can be reached:
+ * opening MSF with `?ai=off` hides the assistant (orb + panel) on this
+ * browser until `?ai=on` is opened. The kill persists in localStorage so
+ * plain visits stay smooth; it is per-browser, and the server-side 启用
+ * toggle in 设置→AI 助手 remains the real off switch.
+ */
+const AI_DISABLED_KEY = "msf-assistant-disabled";
+
+function readAiKilled(): boolean {
+  try {
+    const param = new URLSearchParams(window.location.search).get("ai");
+    if (param === "off") window.localStorage.setItem(AI_DISABLED_KEY, "1");
+    else if (param === "on") window.localStorage.removeItem(AI_DISABLED_KEY);
+    return window.localStorage.getItem(AI_DISABLED_KEY) === "1";
+  } catch {
+    // Hardened webviews can block URL/storage access; never break startup.
+    return false;
+  }
+}
+
 export function AssistantWidget() {
   const [enabled, setEnabled] = useState(false);
   const [orbEnabled, setOrbEnabled] = useState(false);
   const [orbMode, setOrbMode] = useState<OrbMode>("auto");
   const [open, setOpen] = useState(false);
   const [state, setState] = useState<OrbRenderState>("idle");
+  const [aiKilled] = useState(readAiKilled);
   const { user } = useAuth();
 
   useEffect(() => {
-    if (user?.role !== "admin") {
+    if (aiKilled || user?.role !== "admin") {
       setEnabled(false);
       setOrbEnabled(false);
       setOrbMode("auto");
@@ -44,7 +66,7 @@ export function AssistantWidget() {
       active = false;
       window.removeEventListener("msf-assistant-settings-updated", refresh);
     };
-  }, [user?.role]);
+  }, [aiKilled, user?.role]);
 
   const handleStateChange = useCallback((next: OrbRenderState) => setState(next), []);
   if (!enabled) return null;

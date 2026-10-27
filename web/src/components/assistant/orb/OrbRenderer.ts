@@ -14,7 +14,7 @@ const stateStyles: Record<OrbRenderState, keyof typeof stylePresets> = {
   error: "voiceWave",
 };
 
-export type OrbRendererBackend = "webgpu" | "webgl2";
+export type OrbRendererBackend = "webgpu" | "webgl2" | "static";
 
 export type OrbInitOptions = {
   /** Abort a hung WebGPU adapter/device request (ms) and fall back to WebGL2. */
@@ -56,6 +56,9 @@ export class OrbRenderer {
         onTooSlow: options.onTooSlow,
         onError: startWebGL2,
         onReady: () => resolve("webgpu"),
+        // No WebGPU adapter at all: skip the WebGL2 retry (it would almost
+        // certainly land on the software rasterizer) and show the poster.
+        onUnavailable: () => resolve("static"),
       });
     });
   }

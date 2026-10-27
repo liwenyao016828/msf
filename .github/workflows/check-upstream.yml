@@ -1,0 +1,203 @@
+name: Check upstream and release
+
+# 每天检查一次上游 scoltzero/msf 的 main 有没有新提交；有就自动走完
+# 「merge 上游 → 递增 VERSION → 更新 UPSTREAM 钉 → 提交 main →
+#   打 tag → 派发 build-fnos.yml 构建 + 发布 Release」。
+#
+# ── 仓库关系 ─────────────────────────────────────────────────
+# 本仓库是 scoltzero/msf 的 fork（liwenyao016828/msf），main 上带着自己的
+# 修复提交（orb 静态化等）。所以跟进上游用的是 **merge** 而不是 reset：
+# 上游新提交 merge 进 main，我们的修复继续叠在上面。merge 冲突时本 job
+# 硬失败并留下清晰信息，绝不强推 —— 冲突需要人工解决后重跑。
+#
+# ── 版本号 ───────────────────────────────────────────────────
+# VERSION 文件是唯一事实来源（当前 0.6.14）。每次成功 merge 上游，
+# 补丁位 +1（0.6.14 → 0.6.15 → …），单调递增、格式始终是 fnOS 认的
+# 三段式。UPSTREAM 文件钉住「已同步到的上游 commit」，是比 tag 更细的
+# 粒度 —— 上游没打 tag 也会被跟进。
+#
+# ── 为什么是独立的 workflow ──────────────────────────────────
+# GitHub 硬规则：用内置 GITHUB_TOKEN 推送的 tag **不会触发其它 workflow**
+# （防递归）。所以「打 tag → 等 build-fnos.yml 自动跑」这条路不通：
+# tag 会推上去，构建永远不会开始，且 UPSTREAM/VERSION 已提交，下次检查
+# 判定「无更新」，这个版本就永远不会有 Release。
+# 例外只有 workflow_dispatch / repository_dispatch。于是分工：
+#
+#   check-upstream.yml : 定时检查 → merge → 提交 → 打 tag → **派发**构建
+#   build-fnos.yml     : 被派发后照常构建 → 建 Release（一行不用改）
+#
+# ── 幂等 / 自愈 ──────────────────────────────────────────────
+# 提交成功后，下次检查读到的 UPSTREAM 已等于上游 HEAD，直接判定「无更新」，
+# 无事时每天只是一次几秒钟的空转。万一「提交成功但派发失败」，下次运行
+# 会发现「tag 在、Release 不在」并自动补派发一次。tag 不在说明这个版本
+# 从没发布过，不补（避免对从未构建过的东西瞎派发）。
+#
+# ── 手动补发 ─────────────────────────────────────────────────
+# 需要重发某版本：Actions 页面手动跑 build-fnos.yml，ref 填对应 tag。
+# 需要无更新也强制同步：跑本 workflow 并勾 force（强制 merge 一次，
+# 即使 UPSTREAM 与上游 HEAD 相同）。
+
+on:
+  schedule:
+    # 每天一次 03:43 UTC（北京时间 11:43）。不写整点：GitHub 定时任务
+    # 整点排长队，错开减少延迟。
+    - cron: '43 3 * * *'
+
+  workflow_dispatch:
+    inputs:
+      force:
+        description: '上游无新提交时也强制 merge + 重打一版（用于验证流水线）'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write   # 提交 + 打 tag（Release 由 build-fnos.yml 建）
+  actions: write    # 派发 build-fnos.yml 需要
+
+concurrency:
+  group: check-upstream
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Check upstream and sync
+    runs-on: ubuntu-24.04
+    outputs:
+      update: ${{ steps.decide.outputs.update }}
+      tag: ${{ steps.decide.outputs.tag }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0      # merge + 打 tag 需要完整历史
+          ref: main
+
+      - name: Fetch upstream
+        run: |
+          set -euo pipefail
+          git remote add upstream https://github.com/scoltzero/msf.git
+          git fetch upstream main --tags
+          git remote set-url --push upstream DISABLE  # 只读，绝不推上游
+
+      - name: Decide whether to sync
+        id: decide
+        env:
+          FORCE: ${{ inputs.force }}
+        run: |
+          set -euo pipefail
+          UPSTREAM_HEAD="$(git rev-parse upstream/main)"
+          PINNED="$(cat UPSTREAM 2>/dev/null || echo '')"
+          echo "upstream_head=${UPSTREAM_HEAD}" >> "$GITHUB_OUTPUT"
+          echo "pinned=${PINNED:-<none>}" >> "$GITHUB_OUTPUT"
+          if [ "${FORCE:-false}" = "true" ]; then
+            echo "update=true" >> "$GITHUB_OUTPUT"
+          elif [ -n "$PINNED" ] && [ "$PINNED" = "$UPSTREAM_HEAD" ]; then
+            echo "update=false" >> "$GITHUB_OUTPUT"
+            echo "上游无新提交（pinned == upstream/main），跳过同步"
+          else
+            echo "update=true" >> "$GITHUB_OUTPUT"
+            echo "上游有新提交：${PINNED:-<none>} → ${UPSTREAM_HEAD}"
+          fi
+          # tag 总是输出当前 VERSION 对应的 v*，供自愈补派发用
+          echo "tag=v$(cat VERSION)" >> "$GITHUB_OUTPUT"
+
+      - name: Merge upstream and bump version
+        if: steps.decide.outputs.update == 'true'
+        id: merge
+        env:
+          UPSTREAM_HEAD: ${{ steps.decide.outputs.upstream_head }}
+        run: |
+          set -euo pipefail
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git merge upstream/main -m "chore(upstream): merge scoltzero/msf ${UPSTREAM_HEAD:0:12}" \
+            || { echo "::error::merge 冲突 —— 上游改动了与本 fork 修复相同的文件，请人工解决后重跑本 workflow"; exit 1; }
+          # 补丁位 +1：0.6.14 → 0.6.15
+          NEW_VERSION="$(awk -F. '{print $1"."$2"."$3+1}' VERSION)"
+          echo "${NEW_VERSION}" > VERSION
+          echo "${UPSTREAM_HEAD}" > UPSTREAM
+          echo "new_version=${NEW_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "同步上游 ${UPSTREAM_HEAD:0:12}，新版本 ${NEW_VERSION}"
+
+      - name: Commit sync to main
+        if: steps.decide.outputs.update == 'true'
+        env:
+          NEW_VERSION: ${{ steps.merge.outputs.new_version }}
+          UPSTREAM_HEAD: ${{ steps.decide.outputs.upstream_head }}
+        run: |
+          set -euo pipefail
+          git add -A
+          if git diff --cached --quiet; then
+            echo "暂存区无改动（上游是空 merge），跳过提交"; exit 0
+          fi
+          git commit -m "chore(upstream): 跟进 scoltzero/msf ${UPSTREAM_HEAD:0:12}，应用版本 ${NEW_VERSION}"
+          # 重试是必要的：concurrency 只挡本 workflow 的并发，挡不住人工或
+          # 其它 workflow 往 main 推提交。checkout 之后 push 之前 main 前进
+          # 了会被拒；rebase 后重试，3 次仍失败才放弃。
+          pushed=0
+          for attempt in 1 2 3; do
+            if git push origin HEAD:refs/heads/main; then pushed=1; break; fi
+            echo "推送被拒（第 ${attempt} 次），rebase 到远端后重试"
+            git pull --rebase origin main || true
+            sleep 5
+          done
+          [ "$pushed" = "1" ] || { echo "::error::3 次尝试后仍无法推送 main"; exit 1; }
+
+      - name: Create and push tag
+        if: steps.decide.outputs.update == 'true'
+        env:
+          TAG: v${{ steps.merge.outputs.new_version }}
+        run: |
+          set -euo pipefail
+          if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
+            echo "tag ${TAG} 已存在，跳过创建"
+          else
+            git tag "${TAG}"
+            git push origin "refs/tags/${TAG}"
+            echo "已推送 tag ${TAG}"
+          fi
+
+      - name: Dispatch build (with self-heal)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          UPDATE: ${{ steps.decide.outputs.update }}
+          TAG: v${{ steps.merge.outputs.new_version }}
+        run: |
+          set -euo pipefail
+          if [ "$UPDATE" != "true" ]; then
+            # 自愈：上次「提交成功但派发失败」时 tag 在、Release 不在
+            SELFTAG="${{ steps.decide.outputs.tag }}"
+            if ! git ls-remote --exit-code --tags origin "refs/tags/${SELFTAG}" >/dev/null 2>&1; then
+              echo "上游无更新，且 tag ${SELFTAG} 不存在 —— 无需构建"; exit 0
+            fi
+            if gh release view "$SELFTAG" --repo "$REPO" >/dev/null 2>&1; then
+              echo "上游无更新，且 ${SELFTAG} 的 Release 已存在 —— 无需构建"; exit 0
+            fi
+            echo "tag ${SELFTAG} 存在但 Release 缺失 —— 补一次构建（自愈）"
+            gh workflow run build-fnos.yml --repo "$REPO" --ref "$SELFTAG"
+            exit 0
+          fi
+          echo "派发 build-fnos.yml，ref=${TAG}"
+          gh workflow run build-fnos.yml --repo "$REPO" --ref "$TAG"
+          sleep 10
+          gh run list --repo "$REPO" --workflow=build-fnos.yml --limit 3
+
+      - name: Summary
+        if: always()
+        env:
+          UPDATE: ${{ steps.decide.outputs.update }}
+          UPSTREAM_HEAD: ${{ steps.decide.outputs.upstream_head }}
+          PINNED: ${{ steps.decide.outputs.pinned }}
+          NEW_VERSION: ${{ steps.merge.outputs.new_version }}
+        run: |
+          {
+            echo "## 上游检查结果"
+            echo
+            echo "| 项 | 值 |"
+            echo "| --- | --- |"
+            echo "| 上游 HEAD | \`${UPSTREAM_HEAD:-n/a}\` |"
+            echo "| 已钉住 | \`${PINNED:-n/a}\` |"
+            echo "| 需要同步 | \`${UPDATE:-n/a}\` |"
+            echo "| 新版本 | \`${NEW_VERSION:-—}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"

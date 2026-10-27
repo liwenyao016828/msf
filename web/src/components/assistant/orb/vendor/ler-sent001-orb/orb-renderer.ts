@@ -15,6 +15,11 @@ export type OrbRendererOptions = {
   targetFps?: number;
   /** The measured render cost on this device is unusable: stop and degrade. */
   onTooSlow?: (detail: string) => void;
+  /**
+   * No usable WebGPU adapter (request resolved null): the owner should show
+   * the static poster instead of retrying the heavy shader through WebGL2.
+   */
+  onUnavailable?: (detail: string) => void;
 };
 
 export function createOrbRenderer({
@@ -26,6 +31,7 @@ export function createOrbRenderer({
   initTimeoutMs = 2000,
   targetFps = 30,
   onTooSlow,
+  onUnavailable,
 }: OrbRendererOptions): () => void {
   let disposed = false;
   let animationFrame = 0;
@@ -64,6 +70,13 @@ export function createOrbRenderer({
 
     const adapter = await withTimeout(navigator.gpu.requestAdapter(), initTimeoutMs, "WebGPU 适配器请求");
     if (!adapter) {
+      // A resolved-null adapter (VM / remote desktop / unsupported driver /
+      // battery saver) means the heavy shader would very likely fall back to
+      // the software rasterizer — hand control back instead of trying WebGL2.
+      if (onUnavailable) {
+        onUnavailable("webgpu-adapter-null");
+        return;
+      }
       throw new Error("未找到可用的 WebGPU 适配器");
     }
 
