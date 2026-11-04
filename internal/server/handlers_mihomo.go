@@ -51,6 +51,7 @@ func (a *App) registerMihomoRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/mihomo/user-configs/apply", a.handleMihomoUserConfigApply)
 	mux.HandleFunc("DELETE /api/v1/mihomo/user-configs/{name...}", a.handleMihomoUserConfigDelete)
 	mux.HandleFunc("GET /api/v1/mihomo/proxy-groups-config", a.handleMihomoProxyGroupsConfig)
+	mux.HandleFunc("PUT /api/v1/mihomo/proxy-groups/{name}/test-policy", a.handleMihomoProxyGroupTestPolicyPut)
 	mux.HandleFunc("PUT /api/v1/mihomo/proxy-groups-config", a.handleMihomoProxyGroupsConfigPut)
 	mux.HandleFunc("GET /api/v1/mihomo/rule-providers-config", a.handleMihomoProviderConfig)
 	mux.HandleFunc("PUT /api/v1/mihomo/rule-providers-config", a.handleMihomoProviderConfigPut)
@@ -197,7 +198,11 @@ func (a *App) handleMihomoConfig(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "read_failed", err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"success": true, "path": path, "content": content})
+	response := map[string]any{"success": true, "path": path, "content": content}
+	if normalizeConfigRel(path) == mihomoActiveConfigRelPath {
+		response["controller_secret"] = a.mihomoSecret()
+	}
+	writeJSON(w, http.StatusOK, response)
 }
 
 func (a *App) handleMihomoConfigPut(w http.ResponseWriter, r *http.Request) {
